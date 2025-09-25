@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
     Alert,
     Modal,
@@ -17,6 +17,9 @@ import { auth, db } from '../firebase/firebaseConfig';
 
 export default function CreateGame() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const gameId = params?.gameId || null;
+  const isEditing = !!gameId;
   const [gameType, setGameType] = useState('quiz'); // quiz, memory, puzzle
   const [gameTitle, setGameTitle] = useState('');
   const [gameDescription, setGameDescription] = useState('');
@@ -41,6 +44,34 @@ export default function CreateGame() {
   }]);
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+
+  // Load existing game for editing
+  useEffect(() => {
+    const loadGame = async () => {
+      try {
+        if (!isEditing) return;
+        const snap = await getDoc(doc(db, 'customGames', String(gameId)));
+        if (snap.exists()) {
+          const data = snap.data();
+          setGameType(data.type || 'quiz');
+          setGameTitle(data.title || '');
+          setGameDescription(data.description || '');
+          setSubject(data.subject || '');
+          setDifficulty(data.difficulty || 'Easy');
+          setPoints(String(data.points || '50'));
+          if (data.questions) setQuestions(data.questions);
+          if (data.memoryPairs) {
+            setMemoryPairs(data.memoryPairs);
+            setMemoryCards(data.memoryPairs.length);
+          }
+          if (data.wordPuzzleWords) setWordPuzzleWords(data.wordPuzzleWords);
+        }
+      } catch (e) {
+        console.error('Failed to load game for editing:', e);
+      }
+    };
+    loadGame();
+  }, [gameId]);
 
   const addWordPuzzle = () => {
     setWordPuzzleWords([...wordPuzzleWords, {
@@ -190,7 +221,6 @@ export default function CreateGame() {
         type: gameType,
         createdBy: userId,
         createdByName: auth.currentUser?.displayName || auth.currentUser?.email || 'Tutor',
-        createdAt: serverTimestamp(),
         isActive: true,
         playCount: 0,
         averageScore: 0
@@ -206,13 +236,22 @@ export default function CreateGame() {
         gameData.wordPuzzleWords = wordPuzzleWords;
       }
 
-      await addDoc(collection(db, 'customGames'), gameData);
-      
-      Alert.alert(
-        'Success!', 
-        'Your game has been created successfully. Students can now play it!',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      if (isEditing) {
+        // Do not overwrite createdAt on edit
+        await updateDoc(doc(db, 'customGames', String(gameId)), gameData);
+        Alert.alert(
+          'Saved', 
+          'Your changes have been saved successfully.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else {
+        await addDoc(collection(db, 'customGames'), { ...gameData, createdAt: serverTimestamp() });
+        Alert.alert(
+          'Success!', 
+          'Your game has been created successfully. Students can now play it!',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      }
     } catch (error) {
       console.error('Error creating game:', error);
       Alert.alert('Error', 'Failed to create game. Please try again.');
@@ -228,7 +267,7 @@ export default function CreateGame() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Game</Text>
+        <Text style={styles.headerTitle}>{isEditing ? 'Edit Game' : 'Create Game'}</Text>
         <TouchableOpacity onPress={() => setShowPreview(true)}>
           <Ionicons name="eye" size={24} color="#fff" />
         </TouchableOpacity>
@@ -522,7 +561,7 @@ export default function CreateGame() {
             disabled={loading}
           >
             <Text style={styles.createButtonText}>
-              {loading ? 'Creating...' : 'Create Game'}
+              {loading ? (isEditing ? 'Saving...' : 'Creating...') : (isEditing ? 'Save Changes' : 'Create Game')}
             </Text>
           </TouchableOpacity>
         </View>
