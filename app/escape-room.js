@@ -1,18 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Camera, CameraView } from 'expo-camera';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { collection, doc, getDoc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
 import { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import * as Progress from 'react-native-progress';
 import { auth, db } from '../firebase/firebaseConfig';
@@ -95,11 +95,30 @@ export default function EscapeRoomGame() {
   const [selectedTutorInfo, setSelectedTutorInfo] = useState(null);
   const [hasPermission, setHasPermission] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isTutor, setIsTutor] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [gamePendingDelete, setGamePendingDelete] = useState(null);
 
   useEffect(() => {
     loadUserProgress();
     loadCustomGames();
     getBarCodeScannerPermissions();
+    // Check tutor/admin role
+    (async () => {
+      try {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        const snap = await getDoc(doc(db, 'users', uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setIsTutor(!!data.isTutor);
+          setIsAdmin(!!data.isAdmin || /\+admin/.test(auth.currentUser?.email || ""));
+        }
+      } catch (e) {
+        // ignore role check errors
+      }
+    })();
   }, []);
 
   // Refresh user progress when screen is focused (returning from level)
@@ -233,6 +252,34 @@ export default function EscapeRoomGame() {
         pathname: '/play-word-puzzle',
         params: { gameId: game.id }
       });
+    }
+  };
+
+  const confirmAndDeleteGame = (game) => {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid || !(uid === game.createdBy || isAdmin)) {
+        Alert.alert('Not allowed', 'Only the creator or an admin can delete this game.');
+        return;
+      }
+      setGamePendingDelete(game);
+      setConfirmDeleteVisible(true);
+    } catch (e) {
+      // noop
+    }
+  };
+
+  const performDeleteGame = async () => {
+    if (!gamePendingDelete) return;
+    try {
+      await deleteDoc(doc(db, 'customGames', gamePendingDelete.id));
+      setCustomGames((prev) => prev.filter((g) => g.id !== gamePendingDelete.id));
+      setConfirmDeleteVisible(false);
+      setGamePendingDelete(null);
+      Alert.alert('Deleted', 'The game has been deleted.');
+    } catch (err) {
+      console.error('Error deleting game:', err);
+      Alert.alert('Error', 'Failed to delete the game. Please try again.');
     }
   };
 
@@ -420,6 +467,29 @@ export default function EscapeRoomGame() {
                       >
                         <Ionicons name="help-circle-outline" size={20} color="#666" />
                       </TouchableOpacity>
+                      {(auth.currentUser?.uid === game.createdBy || isAdmin) && (
+                        <View style={{ flexDirection: 'row' }}>
+                          <TouchableOpacity
+                            style={[styles.tutorInfoButton, { marginLeft: 6, backgroundColor: 'rgba(25,118,210,0.12)' }]}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              setGamePendingDelete({ ...game, __action: 'edit' });
+                              setConfirmDeleteVisible(true);
+                            }}
+                          >
+                            <Ionicons name="create-outline" size={20} color="#1976D2" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.tutorInfoButton, { marginLeft: 6, backgroundColor: 'rgba(244,67,54,0.12)' }]}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              confirmAndDeleteGame(game);
+                            }}
+                          >
+                            <Ionicons name="trash-outline" size={20} color="#F44336" />
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                     
                     <Text style={styles.levelTitle}>
@@ -527,6 +597,24 @@ export default function EscapeRoomGame() {
             <Ionicons name="qr-code" size={24} color="#fff" />
             <Text style={styles.qrButtonText}>Scan QR Code to Join Game</Text>
           </TouchableOpacity>
+          {isTutor && (
+            <TouchableOpacity
+              style={[styles.qrButton, { backgroundColor: '#2196F3', marginTop: 12 }]}
+              onPress={() => router.push('/create-game')}
+            >
+              <Ionicons name="add-circle" size={24} color="#fff" />
+              <Text style={styles.qrButtonText}>Create Custom Game</Text>
+            </TouchableOpacity>
+          )}
+          {isTutor && (
+            <TouchableOpacity
+              style={[styles.qrButton, { backgroundColor: '#607D8B', marginTop: 12 }]}
+              onPress={() => router.push('/escape-room-qr')}
+            >
+              <Ionicons name="qr-code-outline" size={24} color="#fff" />
+              <Text style={styles.qrButtonText}>Generate Level QR</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
@@ -664,6 +752,65 @@ export default function EscapeRoomGame() {
                 </View>
               </View>
             ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm Delete Modal */}
+      <Modal
+        visible={confirmDeleteVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setConfirmDeleteVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModal}>
+            <View style={styles.confirmHeader}>
+              {gamePendingDelete?.__action === 'edit' ? (
+                <>
+                  <Ionicons name="create-outline" size={28} color="#1976D2" />
+                  <Text style={styles.confirmTitle}>Edit Game</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="warning" size={28} color="#F44336" />
+                  <Text style={styles.confirmTitle}>Delete Game</Text>
+                </>
+              )}
+            </View>
+            {gamePendingDelete?.__action === 'edit' ? (
+              <Text style={styles.confirmMessage}>
+                Do you want to edit "{gamePendingDelete?.title}"?
+              </Text>
+            ) : (
+              <Text style={styles.confirmMessage}>
+                Are you sure you want to delete "{gamePendingDelete?.title}"? This action cannot be undone.
+              </Text>
+            )}
+            <View style={styles.confirmActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setConfirmDeleteVisible(false)}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              {gamePendingDelete?.__action === 'edit' ? (
+                <TouchableOpacity
+                  style={[styles.deleteButton, { backgroundColor: '#1976D2' }]}
+                  onPress={() => {
+                    setConfirmDeleteVisible(false);
+                    const id = gamePendingDelete?.id;
+                    setGamePendingDelete(null);
+                    if (id) {
+                      router.push({ pathname: '/create-game', params: { gameId: id } });
+                    }
+                  }}
+                >
+                  <Text style={styles.deleteButtonText}>Edit</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.deleteButton} onPress={performDeleteGame}>
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
       </Modal>
@@ -967,6 +1114,57 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     maxHeight: height * 0.8,
     overflow: 'hidden',
+  },
+  confirmModal: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: width * 0.9,
+    maxWidth: 420,
+    padding: 20,
+  },
+  confirmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+  },
+  confirmMessage: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#e0e0e0',
+    marginRight: 8,
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#F44336',
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   tutorInfoHeader: {
     flexDirection: 'row',
