@@ -95,15 +95,7 @@ export default function ChatMenuScreen() {
             <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
 
-          {isTutor && (
-            <TouchableOpacity style={styles.item} onPress={() => router.push("/helpdesk-apply")}>
-              <View style={styles.itemLeft}>
-                <Ionicons name="briefcase-outline" size={24} color="#34C759" />
-                <Text style={styles.itemText}>Apply as Helper</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
-          )}
+
 
           {isAdmin && (
             <TouchableOpacity style={styles.item} onPress={() => router.push("/helpdesk-admin")}>

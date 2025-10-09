@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from "react";
-import { SafeAreaView, View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { Alert, FlatList, RefreshControl, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { auth, db } from "../firebase/firebaseConfig";
-import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 
 export default function HelpdeskAdminScreen() {
   const router = useRouter();
@@ -29,14 +29,27 @@ export default function HelpdeskAdminScreen() {
         // Load applications
         const appsSnap = await getDocs(collection(db, "helpdeskApplicants"));
         const appsList = [];
-        appsSnap.forEach((d) => {
+        for (const d of appsSnap.docs) {
           const appData = d.data();
+          // Get user's full name from users collection
+          let displayName = appData.name || appData.email || d.id;
+          try {
+            const userDoc = await getDoc(doc(db, "users", d.id));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              displayName = userData.fullName || userData.name || userData.displayName || appData.name || appData.email || d.id;
+            }
+          } catch (error) {
+            console.log("Error fetching user data for applicant:", error);
+          }
+          
           appsList.push({ 
             id: d.id, 
             ...appData,
+            name: displayName,
             appliedAt: appData.updatedAt || appData.createdAt
           });
-        });
+        }
         // Sort by application date
         appsList.sort((a, b) => {
           const timeA = a.appliedAt?.seconds || 0;
@@ -48,13 +61,26 @@ export default function HelpdeskAdminScreen() {
         // Load current helpers
         const helpersSnap = await getDocs(collection(db, "helpdeskHelpers"));
         const helpersList = [];
-        helpersSnap.forEach((d) => {
+        for (const d of helpersSnap.docs) {
           const helperData = d.data();
+          // Get user's full name from users collection
+          let displayName = helperData.name || helperData.email || d.id;
+          try {
+            const userDoc = await getDoc(doc(db, "users", d.id));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              displayName = userData.fullName || userData.name || userData.displayName || helperData.name || helperData.email || d.id;
+            }
+          } catch (error) {
+            console.log("Error fetching user data for helper:", error);
+          }
+          
           helpersList.push({ 
             id: d.id, 
-            ...helperData
+            ...helperData,
+            name: displayName
           });
-        });
+        }
         // Sort by approval date
         helpersList.sort((a, b) => {
           const timeA = a.approvedAt?.seconds || 0;
@@ -79,14 +105,27 @@ export default function HelpdeskAdminScreen() {
       // Reload applications
       const appsSnap = await getDocs(collection(db, "helpdeskApplicants"));
       const appsList = [];
-      appsSnap.forEach((d) => {
+      for (const d of appsSnap.docs) {
         const appData = d.data();
+        // Get user's full name from users collection
+        let displayName = appData.name || appData.email || d.id;
+        try {
+          const userDoc = await getDoc(doc(db, "users", d.id));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            displayName = userData.fullName || userData.name || userData.displayName || appData.name || appData.email || d.id;
+          }
+        } catch (error) {
+          console.log("Error fetching user data for applicant:", error);
+        }
+        
         appsList.push({ 
           id: d.id, 
           ...appData,
+          name: displayName,
           appliedAt: appData.updatedAt || appData.createdAt
         });
-      });
+      }
       appsList.sort((a, b) => {
         const timeA = a.appliedAt?.seconds || 0;
         const timeB = b.appliedAt?.seconds || 0;
@@ -97,13 +136,26 @@ export default function HelpdeskAdminScreen() {
       // Reload helpers
       const helpersSnap = await getDocs(collection(db, "helpdeskHelpers"));
       const helpersList = [];
-      helpersSnap.forEach((d) => {
+      for (const d of helpersSnap.docs) {
         const helperData = d.data();
+        // Get user's full name from users collection
+        let displayName = helperData.name || helperData.email || d.id;
+        try {
+          const userDoc = await getDoc(doc(db, "users", d.id));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            displayName = userData.fullName || userData.name || userData.displayName || helperData.name || helperData.email || d.id;
+          }
+        } catch (error) {
+          console.log("Error fetching user data for helper:", error);
+        }
+        
         helpersList.push({ 
           id: d.id, 
-          ...helperData
+          ...helperData,
+          name: displayName
         });
-      });
+      }
       helpersList.sort((a, b) => {
         const timeA = a.approvedAt?.seconds || 0;
         const timeB = b.approvedAt?.seconds || 0;
@@ -121,30 +173,65 @@ export default function HelpdeskAdminScreen() {
   const approve = async (app) => {
     if (!isAdmin) return;
     try {
-      // Add to helpdesk helpers
-      await setDoc(doc(db, "helpdeskHelpers", app.id), {
-        subjects: app.subjects || [],
-        bio: app.bio || "",
-        email: app.email || "",
-        name: app.name || app.email || "",
-        highestQualification: app.highestQualification || "",
-        yearsExperience: app.yearsExperience || 0,
-        rating: 0,
-        approvedAt: new Date(),
-        approvedBy: auth.currentUser?.uid,
-      }, { merge: true });
-      
-      // Ensure user is marked as tutor
-      await setDoc(doc(db, "users", app.id), { isTutor: true }, { merge: true });
-      
-      // Update application status
-      await updateDoc(doc(db, "helpdeskApplicants", app.id), { 
-        status: "approved",
-        approvedAt: new Date(),
-        approvedBy: auth.currentUser?.uid
-      });
-      
-      Alert.alert("Approved", `${app.name || app.email} has been approved as a helper and can now assist students.`);
+      // Get user's full name from users collection
+      let userFullName = app.name || app.email || "";
+      try {
+        const userDoc = await getDoc(doc(db, "users", app.id));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          userFullName = userData.fullName || userData.name || userData.displayName || app.name || app.email || "";
+        }
+      } catch (error) {
+        console.log("Error fetching user data for helper:", error);
+      }
+
+      if (app.type === "subject_change") {
+        // Handle subject change request
+        await setDoc(doc(db, "helpdeskHelpers", app.id), {
+          subjects: app.subjects || [],
+          bio: app.bio || "",
+          email: app.email || "",
+          name: userFullName,
+          highestQualification: app.highestQualification || "",
+          yearsExperience: app.yearsExperience || 0,
+          // Keep existing rating and other fields
+        }, { merge: true });
+        
+        // Update application status
+        await updateDoc(doc(db, "helpdeskApplicants", app.id), { 
+          status: "approved",
+          approvedAt: new Date(),
+          approvedBy: auth.currentUser?.uid
+        });
+        
+        Alert.alert("Approved", `${userFullName}'s subject change request has been approved.`);
+      } else {
+        // Handle new application
+        // Add to helpdesk helpers
+        await setDoc(doc(db, "helpdeskHelpers", app.id), {
+          subjects: app.subjects || [],
+          bio: app.bio || "",
+          email: app.email || "",
+          name: userFullName,
+          highestQualification: app.highestQualification || "",
+          yearsExperience: app.yearsExperience || 0,
+          rating: 0,
+          approvedAt: new Date(),
+          approvedBy: auth.currentUser?.uid,
+        }, { merge: true });
+        
+        // Ensure user is marked as tutor
+        await setDoc(doc(db, "users", app.id), { isTutor: true }, { merge: true });
+        
+        // Update application status
+        await updateDoc(doc(db, "helpdeskApplicants", app.id), { 
+          status: "approved",
+          approvedAt: new Date(),
+          approvedBy: auth.currentUser?.uid
+        });
+        
+        Alert.alert("Approved", `${userFullName} has been approved as a helper and can now assist students.`);
+      }
       
       // Refresh data to show updates
       refreshData();
@@ -232,6 +319,7 @@ export default function HelpdeskAdminScreen() {
         <View style={styles.statusRow}>
           <Text style={[styles.status, { color: item.status === 'approved' ? '#34C759' : item.status === 'rejected' ? '#ff3b30' : '#007AFF' }]}>
             Status: {item.status || 'pending'}
+            {item.type === "subject_change" ? " (Subject Change)" : item.type === "new_application" ? " (New Application)" : ""}
           </Text>
           {item.appliedAt && (
             <Text style={styles.date}>

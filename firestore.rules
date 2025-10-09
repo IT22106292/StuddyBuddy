@@ -76,8 +76,20 @@ service cloud.firestore {
       allow update, delete: if request.auth != null;
     }
     
+    // Group chat messages
+    match /groupChats/{groupId}/messages/{messageId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if request.auth != null && (resource.data.senderId == request.auth.uid || isAdmin());
+    }
+    
+    // One-on-one chat messages
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if request.auth != null && (resource.data.from == request.auth.uid || isAdmin());
+    }
+    
     // Global chat
-    match /globalChat/{chatId}/messages/{messageId} {
+    match /globalChat/{messageId} {
       allow read, create: if request.auth != null;
       allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
     }
