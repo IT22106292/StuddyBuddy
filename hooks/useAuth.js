@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { createContext, useContext, useEffect, useState } from "react";
-import { auth } from "../firebase/firebaseConfig";
+import { auth, db } from "../firebase/firebaseConfig";
 
 const AuthContext = createContext();
 
@@ -22,12 +23,38 @@ export function AuthProvider({ children }) {
     };
     
     checkOnboardingStatus();
+    
     // Configure Firebase Auth persistence for React Native
     const initAuth = async () => {
       try {
         // For React Native, persistence is handled automatically by Firebase
         // but we can store additional user info in AsyncStorage if needed
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+          // Create user profile if it doesn't exist (for Google sign-in users)
+          if (currentUser) {
+            try {
+              const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+              if (!userDoc.exists()) {
+                // Create initial profile for Google sign-in users
+                const initialProfile = {
+                  email: currentUser.email || '',
+                  fullName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+                  subjects: [],
+                  expertiseLevel: 'beginner',
+                  isTutor: false,
+                  rating: 0,
+                  studentsCount: 0,
+                  createdAt: new Date(),
+                  profileComplete: true
+                };
+                
+                await setDoc(doc(db, "users", currentUser.uid), initialProfile);
+              }
+            } catch (error) {
+              console.error("Error creating user profile:", error);
+            }
+          }
+          
           setUser(currentUser);
           setLoading(false);
           

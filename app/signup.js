@@ -1,20 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
-  Dimensions,
-  Image,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Dimensions,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { AnimatedAppIcon } from "../components/AnimatedAppIcon";
 import { GalaxyAnimation } from "../components/GalaxyAnimation";
@@ -33,6 +33,8 @@ export default function SignUpScreen() {
   const [subjects, setSubjects] = useState("");
   const [expertiseLevel, setExpertiseLevel] = useState("beginner");
   const [isTutor, setIsTutor] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false); // New state for admin registration
+  const [adminSecret, setAdminSecret] = useState(""); // New state for admin secret
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -50,16 +52,33 @@ export default function SignUpScreen() {
       return;
     }
 
+    // Check if trying to register as admin
+    if (isAdmin) {
+      // In a real application, you would have a more secure way to verify admin registration
+      // For now, we'll use a simple secret code
+      if (adminSecret !== "admin123") { // You should change this to a more secure method
+        setError("Invalid admin secret code");
+        return;
+      }
+    }
+
     setIsLoading(true);
     setError("");
     setShowLoadingScreen(true);
 
     try {
+      console.log("Creating user with email:", email);
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      console.log("User created successfully:", user.uid);
+
+      // Send email verification using the correct Firebase function
+      console.log("Sending email verification...");
+      await sendEmailVerification(user);
+      console.log("Email verification sent successfully");
 
       // Create user profile in Firestore
-      await setDoc(doc(db, "users", user.uid), {
+      const userData = {
         email: email,
         fullName: fullName,
         subjects: subjects.split(",").map(s => s.trim()).filter(s => s),
@@ -69,16 +88,26 @@ export default function SignUpScreen() {
         studentsCount: 0,
         createdAt: new Date(),
         profileComplete: true
-      });
+      };
+
+      // Add isAdmin field if registering as admin
+      if (isAdmin) {
+        userData.isAdmin = true;
+      }
+
+      await setDoc(doc(db, "users", user.uid), userData);
 
       // Keep loading screen for smooth transition
       setTimeout(() => {
-        router.replace("/home");
+        setShowLoadingScreen(false);
+        setIsLoading(false);
+        // Navigate to email verification screen instead of home
+        router.replace("/email-verification");
       }, 1000);
     } catch (err) {
+      console.error("Signup error:", err);
       setError(err.message);
       setShowLoadingScreen(false);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -270,6 +299,50 @@ export default function SignUpScreen() {
                   </View>
                   <Ionicons name="school" size={24} color={isTutor ? GalaxyColors.light.primary : GalaxyColors.light.icon} />
                 </TouchableOpacity>
+
+                {/* Admin Toggle */}
+                <TouchableOpacity
+                  style={styles.tutorToggle}
+                  onPress={() => setIsAdmin(!isAdmin)}
+                >
+                  <View style={[
+                    styles.checkbox,
+                    isAdmin && styles.checkboxSelected
+                  ]}>
+                    {isAdmin && (
+                      <Ionicons name="checkmark" size={16} color={GalaxyColors.light.textInverse} />
+                    )}
+                  </View>
+                  <View style={styles.tutorInfo}>
+                    <Text style={styles.tutorText}>Register as Administrator</Text>
+                    <Text style={styles.tutorSubtext}>Access admin dashboard and manage the platform</Text>
+                  </View>
+                  <Ionicons name="shield" size={24} color={isAdmin ? GalaxyColors.light.primary : GalaxyColors.light.icon} />
+                </TouchableOpacity>
+
+                {/* Admin Secret Input - only shown when admin toggle is on */}
+                {isAdmin && (
+                  <View style={styles.inputContainer}>
+                    <Text style={GlobalStyles.inputLabel}>Admin Secret Code *</Text>
+                    <View style={[
+                      styles.inputWrapper,
+                      focusedInput === 'adminSecret' && styles.inputFocused,
+                      error && styles.inputError
+                    ]}>
+                      <Ionicons name="key-outline" size={20} color={focusedInput === 'adminSecret' ? GalaxyColors.light.primary : GalaxyColors.light.icon} style={styles.inputIcon} />
+                      <TextInput
+                        placeholder="Enter admin secret code"
+                        placeholderTextColor={GalaxyColors.light.inputPlaceholder}
+                        value={adminSecret}
+                        onChangeText={setAdminSecret}
+                        style={styles.textInput}
+                        secureTextEntry={true}
+                        onFocus={() => setFocusedInput('adminSecret')}
+                        onBlur={() => setFocusedInput(null)}
+                      />
+                    </View>
+                  </View>
+                )}
 
                 {/* Sign Up Button */}
                 <TouchableOpacity
@@ -502,6 +575,50 @@ export default function SignUpScreen() {
                     </View>
                     <Ionicons name="school" size={24} color={isTutor ? GalaxyColors.light.primary : GalaxyColors.light.icon} />
                   </TouchableOpacity>
+
+                  {/* Admin Toggle */}
+                  <TouchableOpacity
+                    style={styles.tutorToggle}
+                    onPress={() => setIsAdmin(!isAdmin)}
+                  >
+                    <View style={[
+                      styles.checkbox,
+                      isAdmin && styles.checkboxSelected
+                    ]}>
+                      {isAdmin && (
+                        <Ionicons name="checkmark" size={16} color={GalaxyColors.light.textInverse} />
+                      )}
+                    </View>
+                    <View style={styles.tutorInfo}>
+                      <Text style={styles.tutorText}>Register as Administrator</Text>
+                      <Text style={styles.tutorSubtext}>Access admin dashboard and manage the platform</Text>
+                    </View>
+                    <Ionicons name="shield" size={24} color={isAdmin ? GalaxyColors.light.primary : GalaxyColors.light.icon} />
+                  </TouchableOpacity>
+
+                  {/* Admin Secret Input - only shown when admin toggle is on */}
+                  {isAdmin && (
+                    <View style={styles.inputContainer}>
+                      <Text style={GlobalStyles.inputLabel}>Admin Secret Code *</Text>
+                      <View style={[
+                        styles.inputWrapper,
+                        focusedInput === 'adminSecret' && styles.inputFocused,
+                        error && styles.inputError
+                      ]}>
+                        <Ionicons name="key-outline" size={20} color={focusedInput === 'adminSecret' ? GalaxyColors.light.primary : GalaxyColors.light.icon} style={styles.inputIcon} />
+                        <TextInput
+                          placeholder="Enter admin secret code"
+                          placeholderTextColor={GalaxyColors.light.inputPlaceholder}
+                          value={adminSecret}
+                          onChangeText={setAdminSecret}
+                          style={styles.textInput}
+                          secureTextEntry={true}
+                          onFocus={() => setFocusedInput('adminSecret')}
+                          onBlur={() => setFocusedInput(null)}
+                        />
+                      </View>
+                    </View>
+                  )}
 
                   {/* Sign Up Button */}
                   <TouchableOpacity
