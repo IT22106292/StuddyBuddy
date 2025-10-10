@@ -1,29 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  onSnapshot,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    limit,
+    onSnapshot,
+    query,
+    serverTimestamp,
+    updateDoc,
+    where
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Modal,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    FlatList,
+    Modal,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { auth, db } from '../firebase/firebaseConfig';
 
@@ -43,6 +43,8 @@ export default function GroupChat({ visible, onClose, tutorId }) {
   const [showAddStudentsModal, setShowAddStudentsModal] = useState(false);
   const [availableStudentsForGroup, setAvailableStudentsForGroup] = useState([]);
   const [selectedNewStudents, setSelectedNewStudents] = useState([]);
+  const [selectedMessages, setSelectedMessages] = useState(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
 
   useEffect(() => {
     if (visible && tutorId) {
@@ -198,16 +200,41 @@ export default function GroupChat({ visible, onClose, tutorId }) {
       );
       
       const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-        const messagesList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const currentUid = auth.currentUser?.uid;
+        console.log('📨 [GROUP CHAT] Messages snapshot received, total docs:', snapshot.docs.length);
+        console.log('📨 [GROUP CHAT] Snapshot received at:', new Date().toLocaleTimeString());
+        
+        const allMessages = snapshot.docs.map(doc => {
+          const data = doc.data();
+          // Log messages that have deletedBy field
+          if (data.deletedBy && data.deletedBy[currentUid]) {
+            console.log('📨 [GROUP CHAT] Found message deleted by current user:', doc.id, data.deletedBy);
+          }
+          return {
+            id: doc.id,
+            ...data
+          };
+        });
+        
+        console.log('📨 [GROUP CHAT] All messages before filtering:', allMessages.length);
+        
+        const messagesList = allMessages.filter(message => {
+          // Filter out messages deleted by current user
+          const deletedForMe = message.deletedBy && message.deletedBy[currentUid];
+          if (deletedForMe) {
+            console.log('📨 [GROUP CHAT] Filtering out deleted message:', message.id);
+          }
+          return !deletedForMe;
+        });
+        
         // Sort locally instead of using orderBy to avoid index requirement
         messagesList.sort((a, b) => {
           const aTime = a.timestamp?.toDate?.() || new Date(0);
           const bTime = b.timestamp?.toDate?.() || new Date(0);
-          return aTime - bTime; // Ascending order for messages
+          return bTime - aTime; // Descending order - newest messages at top
         });
+        
+        console.log('📨 [GROUP CHAT] Messages after filtering:', messagesList.length);
         setMessages(messagesList);
       });
 
@@ -505,6 +532,216 @@ export default function GroupChat({ visible, onClose, tutorId }) {
       console.error('Error stack:', error.stack);
       Alert.alert('Error', `Failed to leave the group: ${error.message}`);
     }
+  };
+
+  const toggleMessageSelection = (messageId) => {
+    console.log('Toggle message selection:', messageId);
+    // Check if the message is deleted for the current user
+    const message = messages.find(m => m.id === messageId);
+    console.log('Found message:', message);
+    
+    // For group chat, messages are stored in groupChats/{groupId}/messages subcollection
+    let isDeletedForMe = false;
+    let isDeletedForEveryone = false;
+    
+    if (message) {
+      // Check if deleted for current user
+      isDeletedForMe = message.deletedBy && message.deletedBy[auth.currentUser?.uid];
+      // Check if deleted for everyone
+      isDeletedForEveryone = message.deletedForEveryone;
+    }
+    
+    console.log('Is deleted for me:', isDeletedForMe);
+    console.log('Deleted for everyone:', isDeletedForEveryone);
+    
+    // Don't allow selection of messages deleted for the current user
+    if (isDeletedForMe && !isDeletedForEveryone) {
+      console.log('Cannot select message already deleted for me');
+      return;
+    }
+    
+    const newSelected = new Set(selectedMessages);
+    if (newSelected.has(messageId)) {
+      console.log('Removing message from selection');
+      newSelected.delete(messageId);
+    } else {
+      console.log('Adding message to selection');
+      newSelected.add(messageId);
+    }
+    setSelectedMessages(newSelected);
+    
+    if (newSelected.size === 0) {
+      setSelectionMode(false);
+    }
+    console.log('Selected messages count:', newSelected.size);
+  };
+
+  const deleteForMe = async () => {
+    try {
+      console.log('🗑️ [GROUP CHAT] DeleteForMe function started');
+      const currentUid = auth.currentUser?.uid;
+      console.log('🗑️ [GROUP CHAT] Current user ID:', currentUid);
+      if (!currentUid || !selectedGroup) {
+        console.log('🗑️ [GROUP CHAT] No current user or no selected group, returning');
+        console.log('🗑️ [GROUP CHAT] Selected group:', selectedGroup);
+        return;
+      }
+
+      const messageCount = selectedMessages.size;
+      console.log('🗑️ [GROUP CHAT] Number of messages to delete:', messageCount);
+      console.log('🗑️ [GROUP CHAT] Selected messages:', Array.from(selectedMessages));
+      
+      // Add validation
+      if (messageCount === 0) {
+        Alert.alert("No Selection", "Please select at least one message to delete.");
+        return;
+      }
+      
+      let successCount = 0;
+      
+      for (const messageId of selectedMessages) {
+        try {
+          console.log('🗑️ [GROUP CHAT] Processing message:', messageId);
+          const messageRef = doc(db, "groupChats", selectedGroup.id, "messages", messageId);
+          console.log('🗑️ [GROUP CHAT] Message reference path:', messageRef.path);
+          
+          const updateData = { [`deletedBy.${currentUid}`]: true };
+          console.log('🗑️ [GROUP CHAT] Update data:', updateData);
+          
+          await updateDoc(messageRef, updateData);
+          console.log('🗑️ [GROUP CHAT] Successfully updated message:', messageId);
+          successCount++;
+        } catch (msgError) {
+          console.error('🗑️ [GROUP CHAT] Error deleting individual message:', messageId, msgError);
+        }
+      }
+      
+      console.log('🗑️ [GROUP CHAT] Deletion complete. Success count:', successCount);
+      
+      setSelectedMessages(new Set());
+      setSelectionMode(false);
+      Alert.alert("Success", `Successfully deleted ${successCount} of ${messageCount} message(s) from your chat. These messages are now hidden from your view only.`);
+      console.log('🗑️ [GROUP CHAT] Delete for me completed successfully');
+    } catch (error) {
+      console.error("Error deleting messages for me:", error);
+      Alert.alert("Error", "Failed to delete messages. Please try again.");
+    }
+  };
+
+  const deleteForEveryone = async () => {
+    try {
+      console.log('Delete for everyone called');
+      const currentUid = auth.currentUser?.uid;
+      console.log('Current user ID:', currentUid);
+      if (!currentUid || !selectedGroup) {
+        console.log('No current user or no selected group, returning');
+        return;
+      }
+
+      const messageCount = selectedMessages.size;
+      console.log('Selected messages:', Array.from(selectedMessages));
+      console.log('All messages:', messages);
+      
+      // Add validation
+      if (messageCount === 0) {
+        Alert.alert("No Selection", "Please select at least one message to delete.");
+        return;
+      }
+
+      // Only delete messages sent by current user
+      const myMessages = Array.from(selectedMessages).filter(messageId => {
+        const message = messages.find(m => m.id === messageId);
+        console.log('Checking if message is mine:', messageId, message?.senderId, currentUid, message?.senderId === currentUid);
+        return message && message.senderId === currentUid;
+      });
+
+      const otherMessages = Array.from(selectedMessages).filter(messageId => {
+        const message = messages.find(m => m.id === messageId);
+        return message && message.senderId !== currentUid;
+      });
+
+      console.log('My messages:', myMessages);
+      console.log('Other messages:', otherMessages);
+
+      if (myMessages.length === 0) {
+        console.log('No messages to delete for everyone');
+        Alert.alert(
+          "Partial Action", 
+          `You can only delete messages you sent for everyone.\n\n${otherMessages.length} message(s) will be deleted from your view only.`,
+          [
+            {
+              text: "Cancel",
+              style: "cancel"
+            },
+            {
+              text: "Delete for Me Only",
+              onPress: deleteForMe
+            }
+          ]
+        );
+        return;
+      }
+
+      // Delete messages sent by current user for everyone
+      console.log('Deleting messages for everyone:', myMessages);
+      let mySuccessCount = 0;
+      for (const messageId of myMessages) {
+        try {
+          console.log('Deleting message for everyone:', messageId);
+          const messageRef = doc(db, "groupChats", selectedGroup.id, "messages", messageId);
+          console.log('Message ref:', messageRef);
+          
+          await updateDoc(messageRef, {
+            text: "This message was deleted",
+            deletedForEveryone: true,
+            deletedAt: serverTimestamp()
+          });
+          console.log('Successfully marked message as deleted for everyone:', messageId);
+          mySuccessCount++;
+        } catch (msgError) {
+          console.error('Error deleting individual message for everyone:', messageId, msgError);
+        }
+      }
+      
+      // For other messages, delete for me only
+      let otherSuccessCount = 0;
+      if (otherMessages.length > 0) {
+        console.log('Deleting other messages for me only:', otherMessages);
+        for (const messageId of otherMessages) {
+          try {
+            console.log('Deleting other message for me:', messageId);
+            const messageRef = doc(db, "groupChats", selectedGroup.id, "messages", messageId);
+            await updateDoc(messageRef, {
+              [`deletedBy.${currentUid}`]: true
+            });
+            console.log('Successfully marked other message as deleted for user:', messageId);
+            otherSuccessCount++;
+          } catch (msgError) {
+            console.error('Error deleting individual message for me:', messageId, msgError);
+          }
+        }
+      }
+      
+      setSelectedMessages(new Set());
+      setSelectionMode(false);
+      
+      let successMessage = `${mySuccessCount} of ${myMessages.length} message(s) deleted for everyone.`;
+      if (otherMessages.length > 0) {
+        successMessage += `\n\nAdditionally, ${otherSuccessCount} of ${otherMessages.length} other message(s) deleted from your view only.`;
+      }
+      
+      Alert.alert("Success", successMessage);
+      console.log('Delete for everyone completed successfully');
+    } catch (error) {
+      console.error("Error deleting messages for everyone:", error);
+      Alert.alert("Error", "Failed to delete messages for everyone. Please try again.");
+    }
+  };
+
+  const cancelSelection = () => {
+    console.log('Cancel selection called');
+    setSelectedMessages(new Set());
+    setSelectionMode(false);
   };
 
   const createGroup = async () => {
@@ -808,18 +1045,55 @@ export default function GroupChat({ visible, onClose, tutorId }) {
     </TouchableOpacity>
   );
 
-  const renderMessage = ({ item }) => (
-    <View style={[
-      styles.messageContainer,
-      item.senderId === tutorId ? styles.tutorMessage : styles.studentMessage
-    ]}>
-      <Text style={styles.senderName}>{item.senderName}</Text>
-      <Text style={styles.messageText}>{item.text}</Text>
-      <Text style={styles.messageTime}>
-        {item.timestamp?.toDate?.()?.toLocaleTimeString() || 'Now'}
-      </Text>
-    </View>
-  );
+  const renderMessage = ({ item }) => {
+    const isSelected = selectedMessages.has(item.id);
+    const isDeletedForEveryone = item.deletedForEveryone;
+    const isDeletedForMe = item.deletedBy && item.deletedBy[auth.currentUser?.uid];
+    const isMine = item.senderId === auth.currentUser?.uid;
+    
+    // If deleted for me, don't show the message at all
+    if (isDeletedForMe && !isDeletedForEveryone) return null;
+    
+    const displayText = isDeletedForEveryone ? "This message was deleted" : item.text;
+
+    return (
+      <View style={[
+        styles.messageContainer2,
+        isMine ? styles.messageContainerMine : styles.messageContainerTheirs
+      ]}>
+        {selectionMode && (
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={() => toggleMessageSelection(item.id)}
+          >
+            <Ionicons
+              name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+              size={20}
+              color={isSelected ? "#007AFF" : "#666"}
+            />
+          </TouchableOpacity>
+        )}
+        
+        <View style={[
+          styles.msg,
+          isMine ? styles.mine : styles.theirs,
+          isSelected && styles.selected,
+          (isDeletedForEveryone || isDeletedForMe) && styles.deleted
+        ]}>
+          <Text style={styles.senderName}>{item.senderName}</Text>
+          <Text style={[
+            styles.msgText,
+            (isDeletedForEveryone || isDeletedForMe) && styles.deletedText
+          ]}>
+            {displayText}
+          </Text>
+          <Text style={styles.messageTime}>
+            {item.timestamp?.toDate?.()?.toLocaleTimeString() || 'Now'}
+          </Text>
+        </View>
+      </View>
+    );
+  };
 
   const renderStudentItem = ({ item }) => (
     <TouchableOpacity
@@ -1012,30 +1286,86 @@ export default function GroupChat({ visible, onClose, tutorId }) {
         >
           <SafeAreaView style={styles.container}>
             <View style={styles.chatHeader}>
-              <TouchableOpacity
-                onPress={() => setShowGroupModal(false)}
-                style={styles.backButton}
-              >
-                <Ionicons name="arrow-back" size={24} color="#007AFF" />
-              </TouchableOpacity>
-              <View style={styles.chatHeaderInfo}>
-                <Text style={styles.chatHeaderTitle}>{selectedGroup?.name}</Text>
-                <Text style={styles.chatHeaderSubtitle}>
-                  {selectedGroup?.studentIds?.length || 0} students
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  console.log('=== GROUP INFO BUTTON PRESSED ===');
-                  console.log('Current selectedGroup:', selectedGroup);
-                  console.log('Current groupMembers:', groupMembers);
-                  console.log('Opening group info modal...');
-                  setShowGroupInfoModal(true);
-                }}
-                style={styles.groupInfoButton}
-              >
-                <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
-              </TouchableOpacity>
+              {selectionMode ? (
+                <>
+                  <TouchableOpacity onPress={cancelSelection}>
+                    <Ionicons name="close" size={24} color="#007AFF" />
+                  </TouchableOpacity>
+                  <Text style={styles.chatHeaderTitle}>{selectedMessages.size} selected</Text>
+                  <View style={styles.headerActions}>
+                    <TouchableOpacity 
+                      style={styles.headerActionButton}
+                      onPress={() => {
+                        console.log('Delete button pressed');
+                        console.log('Selected messages count:', selectedMessages.size);
+                        console.log('Selected messages:', Array.from(selectedMessages));
+                        if (selectedMessages.size === 0) {
+                          Alert.alert("No Selection", "Please select at least one message to delete.");
+                          return;
+                        }
+                        
+                        // TEMPORARY: Direct call for testing - bypassing Alert dialog
+                        console.log('🧪 TESTING: Calling deleteForMe directly (bypassing Alert in group chat)');
+                        deleteForMe();
+                        
+                        /* ORIGINAL CODE WITH ALERT - COMMENTED FOR TESTING
+                        Alert.alert(
+                          "Delete Messages",
+                          `You have selected ${selectedMessages.size} message(s) for deletion.\n\nChoose an option:`,
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            { 
+                              text: "Delete for Everyone", 
+                              onPress: deleteForEveryone,
+                              style: "destructive"
+                            },
+                            { text: "Delete for Me Only", onPress: deleteForMe }
+                          ]
+                        );
+                        */
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={22} color="#ff3b30" />
+                    </TouchableOpacity>
+
+                  </View>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    onPress={() => setShowGroupModal(false)}
+                    style={styles.backButton}
+                  >
+                    <Ionicons name="arrow-back" size={24} color="#007AFF" />
+                  </TouchableOpacity>
+                  <View style={styles.chatHeaderInfo}>
+                    <Text style={styles.chatHeaderTitle}>{selectedGroup?.name}</Text>
+                    <Text style={styles.chatHeaderSubtitle}>
+                      {selectedGroup?.studentIds?.length || 0} students
+                    </Text>
+                  </View>
+                  <View style={styles.headerActions}>
+                    <TouchableOpacity
+                      onPress={() => setSelectionMode(true)}
+                      style={styles.headerActionButton}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={22} color="#007AFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        console.log('=== GROUP INFO BUTTON PRESSED ===');
+                        console.log('Current selectedGroup:', selectedGroup);
+                        console.log('Current groupMembers:', groupMembers);
+                        console.log('Opening group info modal...');
+                        setShowGroupInfoModal(true);
+                      }}
+                      style={styles.groupInfoButton}
+                    >
+                      <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
 
             <FlatList
@@ -1052,7 +1382,14 @@ export default function GroupChat({ visible, onClose, tutorId }) {
                 placeholder="Type a message..."
                 value={message}
                 onChangeText={setMessage}
-                multiline
+                onSubmitEditing={() => {
+                  console.log('🗑️ [GROUP CHAT] Enter key pressed, sending message');
+                  if (message.trim()) {
+                    sendMessage();
+                  }
+                }}
+                returnKeyType="send"
+                blurOnSubmit={false}
               />
               <TouchableOpacity
                 style={styles.sendButton}
@@ -1636,5 +1973,55 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
+  },
+  messageContainer2: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    marginVertical: 4,
+    paddingHorizontal: 8
+  },
+  messageContainerMine: { 
+    justifyContent: "flex-end" 
+  },
+  messageContainerTheirs: { 
+    justifyContent: "flex-start" 
+  },
+  selectButton: {
+    padding: 8,
+    marginHorizontal: 4
+  },
+  msg: { 
+    maxWidth: "80%", 
+    padding: 10, 
+    borderRadius: 10, 
+    position: "relative" 
+  },
+  mine: { 
+    backgroundColor: "#DCF8C6" 
+  },
+  theirs: { 
+    backgroundColor: "white" 
+  },
+  selected: { 
+    borderWidth: 2, 
+    borderColor: "#007AFF", 
+    backgroundColor: "#E3F2FD" 
+  },
+  deleted: { 
+    opacity: 0.6 
+  },
+  msgText: { 
+    fontSize: 16 
+  },
+  deletedText: { 
+    fontStyle: "italic", 
+    color: "#666" 
+  },
+  headerActions: { 
+    flexDirection: "row", 
+    alignItems: "center" 
+  },
+  headerActionButton: { 
+    marginLeft: 15 
   },
 });

@@ -8,6 +8,15 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
     
+    // Custom games (Escape Room related)
+    match /customGames/{gameId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid || isAdmin()
+      );
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if request.auth != null;
@@ -67,8 +76,20 @@ service cloud.firestore {
       allow update, delete: if request.auth != null;
     }
     
+    // Group chat messages
+    match /groupChats/{groupId}/messages/{messageId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if request.auth != null && (resource.data.senderId == request.auth.uid || isAdmin());
+    }
+    
+    // One-on-one chat messages
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if request.auth != null && (resource.data.from == request.auth.uid || isAdmin());
+    }
+    
     // Global chat
-    match /globalChat/{chatId}/messages/{messageId} {
+    match /globalChat/{messageId} {
       allow read, create: if request.auth != null;
       allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
     }
