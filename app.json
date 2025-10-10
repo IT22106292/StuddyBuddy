@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "my-firebase-app",
-    "slug": "my-firebase-app",
+    "name": "StudyBuddy",
+    "slug": "studybuddy",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myfirebaseapp",
+    "scheme": "studybuddy",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -21,7 +21,7 @@
         "android.permission.CAMERA",
         "android.permission.CAMERA"
       ],
-      "package": "com.anonymous.myfirebaseapp"
+      "package": "com.studybuddy.app"
     },
     "web": {
       "bundler": "metro",
@@ -52,7 +52,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyDtbcAlT4Hq0KrvbsLDVc8l5woyXKOn5KA"
+      "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyDtbcAlT4Hq0KrvbsLDVc8l5woyXKOn5KA",
+      "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "234882778415-qo2oe5ehans3gpajht9dl4mljqodjq1r.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "http://localhost:8081/signin"
     }
   }
 }
