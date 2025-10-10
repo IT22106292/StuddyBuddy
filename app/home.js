@@ -322,14 +322,36 @@ export default function HomeScreen() {
 
   const fetchUserProfile = async () => {
     try {
-      const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      let data = null;
+      
       if (userDoc.exists()) {
-        const data = userDoc.data();
-        setUserProfile(data);
-        try { setIsAdmin(!!data.isAdmin); } catch {}
-        // Recompute data once profile (tutor/student) is known
-        fetchData(true);
+        data = userDoc.data();
+      } else {
+        // Create initial profile for Google sign-in users
+        const initialProfile = {
+          email: user.email || '',
+          fullName: user.displayName || user.email?.split('@')[0] || 'User',
+          subjects: [],
+          expertiseLevel: 'beginner',
+          isTutor: false,
+          rating: 0,
+          studentsCount: 0,
+          createdAt: new Date(),
+          profileComplete: true
+        };
+        
+        await setDoc(doc(db, "users", user.uid), initialProfile);
+        data = initialProfile;
       }
+      
+      setUserProfile(data);
+      try { setIsAdmin(!!data.isAdmin); } catch {}
+      // Recompute data once profile (tutor/student) is known
+      fetchData(true);
     } catch (error) {
       console.error("Error fetching user profile:", error);
     }

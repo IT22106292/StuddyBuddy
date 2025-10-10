@@ -1,18 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { sendPasswordResetEmail, signOut } from "firebase/auth";
-import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { useCallback, useEffect, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Dimensions,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import * as Progress from 'react-native-progress';
 import { auth, db } from "../firebase/firebaseConfig";
@@ -30,6 +30,9 @@ export default function ProfileScreen() {
   const [commentedLoading, setCommentedLoading] = useState(true);
   const [escapeRoomProgress, setEscapeRoomProgress] = useState(null);
   const [escapeRoomLoading, setEscapeRoomLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [resetEmailError, setResetEmailError] = useState("");
 
   useEffect(() => {
     fetchUserProfile();
@@ -45,23 +48,77 @@ export default function ProfileScreen() {
     }, [])
   );
 
+  const createInitialProfile = async (user) => {
+    try {
+      const initialProfile = {
+        email: user.email || '',
+        fullName: user.displayName || user.email?.split('@')[0] || 'User',
+        subjects: [],
+        expertiseLevel: 'beginner',
+        isTutor: false,
+        rating: 0,
+        studentsCount: 0,
+        createdAt: new Date(),
+        profileComplete: false
+      };
+      
+      await setDoc(doc(db, "users", user.uid), initialProfile);
+      return initialProfile;
+    } catch (error) {
+      console.error("Error creating initial profile:", error);
+      return null;
+    }
+  };
+
   const fetchUserProfile = async () => {
     try {
-      const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-      if (userDoc.exists()) {
-        const profile = userDoc.data();
-        setUserProfile(profile);
-        setEditedProfile(profile);
+      setProfileLoading(true);
+      const user = auth.currentUser;
+      if (!user) {
+        setProfileLoading(false);
+        return;
       }
+
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      let profile = null;
+      
+      if (userDoc.exists()) {
+        profile = userDoc.data();
+      } else {
+        // Create initial profile for Google sign-in users
+        const initialProfile = {
+          email: user.email || '',
+          fullName: user.displayName || user.email?.split('@')[0] || 'User',
+          subjects: [],
+          expertiseLevel: 'beginner',
+          isTutor: false,
+          rating: 0,
+          studentsCount: 0,
+          createdAt: new Date(),
+          profileComplete: true
+        };
+        
+        await setDoc(doc(db, "users", user.uid), initialProfile);
+        profile = initialProfile;
+      }
+      
+      setUserProfile(profile);
+      setEditedProfile(profile);
     } catch (error) {
       console.error("Error fetching profile:", error);
+      Alert.alert("Error", "Failed to load profile. Please try again.");
+    } finally {
+      setProfileLoading(false);
     }
   };
 
   const handleSaveProfile = async () => {
     try {
-      await updateDoc(doc(db, "users", auth.currentUser.uid), editedProfile);
-      setUserProfile(editedProfile);
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        ...editedProfile,
+        profileComplete: true
+      });
+      setUserProfile({...editedProfile, profileComplete: true});
       setIsEditing(false);
       Alert.alert("Success", "Profile updated successfully!");
     } catch (error) {
@@ -71,14 +128,38 @@ export default function ProfileScreen() {
 
   const handlePasswordReset = async () => {
     try {
+      setResetEmailError("");
+      setResetEmailSent(false);
+      
       if (!auth.currentUser?.email) {
-        Alert.alert("Error", "No email associated with this account");
+        setResetEmailError("No email associated with this account");
         return;
       }
+      
+      console.log("Sending password reset email to:", auth.currentUser.email);
       await sendPasswordResetEmail(auth, auth.currentUser.email);
-      Alert.alert("Email sent", "Check your inbox to reset the password.");
+      console.log("Password reset email sent successfully");
+      setResetEmailSent(true);
     } catch (e) {
-      Alert.alert("Error", e.message || "Failed to send reset email");
+      console.error("Password reset error:", e);
+      console.error("Error code:", e.code);
+      console.error("Error message:", e.message);
+      
+      let errorMessage = "Failed to send reset email. Please try again.";
+      
+      if (e.code === 'auth/too-many-requests') {
+        errorMessage = "Too many requests. Please wait a while before trying again.";
+      } else if (e.code === 'auth/user-not-found') {
+        errorMessage = "No account found with this email address.";
+      } else if (e.code === 'auth/invalid-email') {
+        errorMessage = "Invalid email address.";
+      } else if (e.code === 'auth/network-request-failed') {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (e.code === 'auth/internal-error') {
+        errorMessage = "Internal error. Please try again later.";
+      }
+      
+      setResetEmailError(errorMessage);
     }
   };
 
@@ -220,28 +301,36 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to logout?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Logout",
-          style: "destructive",
-          onPress: async () => {
-            await signOut(auth);
-            router.replace("/signin");
-          },
-        },
-      ]
-    );
+    console.log("Logout function called");
+    try {
+      console.log("Logging out...");
+      await signOut(auth);
+      console.log("Logged out successfully");
+      router.replace("/signin");
+    } catch (error) {
+      console.error("Logout error:", error);
+      Alert.alert("Error", "Failed to logout. Please try again.");
+    }
   };
+
+  if (profileLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!userProfile) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text>Loading profile...</Text>
+          <Text>Error loading profile. Please try again.</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchUserProfile}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -466,6 +555,28 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.saveButton} onPress={handlePasswordReset}>
             <Text style={styles.saveButtonText}>Send Password Reset Email</Text>
           </TouchableOpacity>
+          
+          {resetEmailSent && (
+            <View style={styles.successMessageContainer}>
+              <View style={styles.successMessage}>
+                <Text style={styles.successMessageTitle}>Email Sent!</Text>
+                <Text style={styles.successMessageText}>
+                  We've sent a password reset link to {auth.currentUser?.email}. Please check your inbox and spam/junk folder.
+                </Text>
+                <View style={styles.troubleshootingList}>
+                  <Text style={styles.troubleshootingItem}>• Check your spam/junk folder</Text>
+                  <Text style={styles.troubleshootingItem}>• Verify the email address is correct</Text>
+                  <Text style={styles.troubleshootingItem}>• Try with a different email provider</Text>
+                </View>
+              </View>
+            </View>
+          )}
+          
+          {resetEmailError ? (
+            <View style={styles.errorMessageContainer}>
+              <Text style={styles.errorMessageText}>{resetEmailError}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Actions */}
@@ -525,7 +636,10 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity style={styles.logoutButton} onPress={() => {
+          console.log("Logout button pressed in JSX");
+          handleLogout();
+        }}>
           <Ionicons name="log-out-outline" size={20} color="#ff3b30" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
@@ -747,23 +861,20 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 8,
   },
-  logoutText: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: "#ff3b30",
-    fontWeight: "500",
-  },
+  
   escapeRoomHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
+  
   pointsDisplay: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
     marginBottom: 20,
   },
+  
   pointsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -774,6 +885,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  
   streakContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -784,34 +896,41 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
   },
+  
   pointsInfo: {
     marginLeft: 12,
     alignItems: 'center',
   },
+  
   streakInfo: {
     marginLeft: 12,
     alignItems: 'center',
   },
+  
   pointsNumber: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#673AB7',
   },
+  
   streakNumber: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FF6B35',
   },
+  
   pointsLabel: {
     fontSize: 14,
     color: '#666',
     marginTop: 2,
   },
+  
   streakLabel: {
     fontSize: 14,
     color: '#666',
     marginTop: 2,
   },
+  
   maxStreakContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -824,52 +943,63 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFD700',
   },
+  
   maxStreakText: {
     fontSize: 14,
     color: '#F57C00',
     fontWeight: '600',
     marginLeft: 6,
   },
+  
   progressSection: {
     marginBottom: 20,
   },
+  
   progressTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
     marginBottom: 8,
   },
+  
   progressInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
+  
   progressText: {
     fontSize: 14,
     color: '#666',
   },
+  
   progressPercentage: {
     fontSize: 14,
     fontWeight: '600',
     color: '#673AB7',
   },
+  
   progressBar: {
     alignSelf: 'center',
   },
+  
   badgesSection: {
     marginBottom: 16,
   },
+  
   badgesTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
     marginBottom: 12,
   },
+  
   badgesContainer: {
     flexDirection: 'row',
     paddingHorizontal: 4,
   },
+  
   badgeItem: {
     alignItems: 'center',
     marginRight: 16,
@@ -881,6 +1011,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFD700',
     minWidth: 80,
   },
+  
   badgeText: {
     fontSize: 12,
     color: '#333',
@@ -888,6 +1019,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+  
   currentLevelContainer: {
     backgroundColor: '#E3F2FD',
     padding: 12,
@@ -895,14 +1027,29 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#2196F3',
   },
+  
   currentLevelTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: '#2196F3',
     marginBottom: 4,
   },
+  
   currentLevelText: {
     fontSize: 14,
     color: '#333',
+  },
+  
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: "#007AFF",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

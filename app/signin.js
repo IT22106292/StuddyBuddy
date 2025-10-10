@@ -1,8 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Google from "expo-auth-session/providers/google";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { useState } from "react";
+import * as WebBrowser from "expo-web-browser";
+import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
+import { useEffect, useState } from "react";
 import {
   Dimensions,
   Image,
@@ -35,6 +39,91 @@ export default function SignInScreen() {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
 
+  // Initialize WebBrowser for Google Auth
+  useEffect(() => {
+    WebBrowser.maybeCompleteAuthSession();
+  }, []);
+
+  // Log when component mounts
+  useEffect(() => {
+    console.log('SignInScreen mounted');
+  }, []);
+
+  // Log environment variables for debugging
+  useEffect(() => {
+    console.log('Google OAuth Environment Variables:');
+    console.log('Web Client ID:', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'Using default client ID');
+    console.log('iOS Client ID:', process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || 'Not set');
+    console.log('Android Client ID:', process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || 'Not set');
+  }, []);
+
+  // Google Auth setup
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: '234882778415-qo2oe5ehans3gpajht9dl4mljqodjq1r.apps.googleusercontent.com',
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    redirectUri: process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI || 'http://localhost:8081/signin', // Use your actual redirect URI
+    useProxy: true, // Use Expo's auth proxy for better compatibility
+    scopes: ['openid', 'profile', 'email'], // Explicitly request scopes
+  });
+
+  useEffect(() => {
+    console.log('Google Auth response:', response);
+    
+    if (!response) {
+      return;
+    }
+    
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      const credential = GoogleAuthProvider.credential(id_token);
+      
+      signInWithCredential(auth, credential)
+        .then(async (userCredential) => {
+          // Successfully signed in
+          console.log('Google Sign-In successful');
+          
+          // Check if user is admin
+          const user = userCredential.user;
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          const userData = userDoc.data();
+          
+          setTimeout(() => {
+            setShowLoadingScreen(false);
+            setIsLoading(false);
+            if (userData && userData.isAdmin) {
+              router.replace("/admin");
+            } else {
+              router.replace("/home");
+            }
+          }, 1000);
+        })
+        .catch(error => {
+          console.error('Google sign-in error:', error);
+          setError(`Failed to sign in with Google: ${error.message || 'Unknown error'}`);
+          setShowLoadingScreen(false);
+          setIsLoading(false);
+        });
+    } else if (response?.type === 'error') {
+      // Handle error
+      console.error('Google Sign-In error:', response.params);
+      
+      if (response.params?.error === 'redirect_uri_mismatch') {
+        setError("Google Sign-In failed: Redirect URI mismatch. Please add http://localhost:8081/signin to your Google Cloud Console authorized redirect URIs. See FIX_REDIRECT_URI_MISMATCH.md for detailed instructions.");
+      } else {
+        setError(`Google Sign-In failed: ${response.params?.error_description || 'Unknown error'}`);
+      }
+      
+      setShowLoadingScreen(false);
+      setIsLoading(false);
+    } else if (response?.type === 'dismiss') {
+      // Handle dismissal
+      setError("Google Sign-In was cancelled or dismissed. This often happens when running on web. Try using a device or simulator instead. If you see a redirect_uri_mismatch error, make sure http://localhost:8081/signin is added to your Google Cloud Console authorized redirect URIs.");
+      setShowLoadingScreen(false);
+      setIsLoading(false);
+    }
+  }, [response]);
+
   const handleSignIn = async () => {
     if (!email || !password) {
       setError("Please fill in all fields");
@@ -46,16 +135,83 @@ export default function SignInScreen() {
     setShowLoadingScreen(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Check if email is verified
+      if (!user.emailVerified) {
+        // Sign out the user and redirect to verification page
+        await signOut(auth);
+        setTimeout(() => {
+          setShowLoadingScreen(false);
+          setIsLoading(false);
+          router.replace("/email-verification");
+        }, 1000);
+        return;
+      }
+
+      // Check if user is admin
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const userData = userDoc.data();
+      
       // Keep loading screen for smooth transition
       setTimeout(() => {
-        router.replace("/home");
+        if (userData && userData.isAdmin) {
+          router.replace("/admin");
+        } else {
+          router.replace("/home");
+        }
       }, 1000);
     } catch (err) {
       setError("Invalid email or password");
       setShowLoadingScreen(false);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!request) {
+      setError("Google Sign-In is not available right now. This typically happens when running on web or if the OAuth configuration is incorrect. Please try again using a device or simulator. See google-signin-dismiss-issue.md for detailed troubleshooting.");
+      return;
+    }
+    
+    // Clear any previous errors
+    setError("");
+    
+    // Show loading state
+    setIsLoading(true);
+    setShowLoadingScreen(true);
+    
+    try {
+      console.log('Initiating Google Sign-In with request:', request);
+      const result = await promptAsync();
+      console.log('Google Sign-In result:', result);
+      
+      if (result?.type === 'dismiss') {
+        setError("Google Sign-In was cancelled or dismissed. This often happens when running on web. Try using a device or simulator instead. If you see a redirect_uri_mismatch error, make sure http://localhost:8081/signin is added to your Google Cloud Console authorized redirect URIs.");
+        setIsLoading(false);
+        setShowLoadingScreen(false);
+      } else if (result?.type === 'error') {
+        console.error('Google Sign-In error:', result.params);
+        
+        // Handle specific error codes
+        if (result.params?.error === 'invalid_request') {
+          setError("Google Sign-In failed: Invalid request (400 error). Please check your Google OAuth configuration. See google-signin-troubleshooting.md for detailed troubleshooting steps.");
+        } else if (result.params?.error === 'redirect_uri_mismatch') {
+          setError("Google Sign-In failed: Redirect URI mismatch. Please add http://localhost:8081/signin to your Google Cloud Console authorized redirect URIs. See FIX_REDIRECT_URI_MISMATCH.md for detailed instructions.");
+        } else {
+          setError(`Google Sign-In failed: ${result.params?.error_description || 'Unknown error'}`);
+        }
+        
+        setIsLoading(false);
+        setShowLoadingScreen(false);
+      }
+    } catch (error) {
+      console.error('Google Sign-In error:', error);
+      setError(`Failed to initiate Google Sign-In: ${error.message || 'Unknown error'}. This often happens when running on web. Try using a device or simulator instead.`);
+      setIsLoading(false);
+      setShowLoadingScreen(false);
     }
   };
 
@@ -174,15 +330,40 @@ export default function SignInScreen() {
 
                 <View style={styles.dividerContainer}>
                   <View style={styles.divider} />
-                  <Text style={styles.dividerText}>or</Text>
+                  <Text style={styles.dividerText}>or continue with</Text>
                   <View style={styles.divider} />
                 </View>
+
+                <TouchableOpacity
+                  style={styles.googleButton}
+                  onPress={handleGoogleSignIn}
+                  disabled={!request || isLoading}
+                >
+                  <Ionicons name="logo-google" size={20} color="#DB4437" />
+                  <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                </TouchableOpacity>
+                
+                {error && error.includes('400') && (
+                  <View style={styles.infoContainer}>
+                    <Text style={styles.infoText}>
+                      Having trouble with Google Sign-In? Check the troubleshooting guide for solutions.
+                    </Text>
+                  </View>
+                )}
 
                 <TouchableOpacity
                   style={GlobalStyles.buttonSecondary}
                   onPress={() => router.push("/signup")}
                 >
                   <Text style={GlobalStyles.buttonSecondaryText}>Create New Account</Text>
+                </TouchableOpacity>
+
+                {/* Forgot Password Link */}
+                <TouchableOpacity
+                  style={styles.forgotPasswordButton}
+                  onPress={() => router.push("/forgot-password")}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
                 </TouchableOpacity>
               </View>
 
@@ -312,15 +493,32 @@ export default function SignInScreen() {
 
                   <View style={styles.dividerContainer}>
                     <View style={styles.divider} />
-                    <Text style={styles.dividerText}>or</Text>
+                    <Text style={styles.dividerText}>or continue with</Text>
                     <View style={styles.divider} />
                   </View>
+
+                  <TouchableOpacity
+                    style={styles.googleButton}
+                    onPress={handleGoogleSignIn}
+                    disabled={isLoading}
+                  >
+                    <Ionicons name="logo-google" size={20} color="#DB4437" />
+                    <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                  </TouchableOpacity>
 
                   <TouchableOpacity
                     style={GlobalStyles.buttonSecondary}
                     onPress={() => router.push("/signup")}
                   >
                     <Text style={GlobalStyles.buttonSecondaryText}>Create New Account</Text>
+                  </TouchableOpacity>
+
+                  {/* Forgot Password Link */}
+                  <TouchableOpacity
+                    style={styles.forgotPasswordButton}
+                    onPress={() => router.push("/forgot-password")}
+                  >
+                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -547,6 +745,30 @@ const styles = {
     marginHorizontal: 16,
   },
   
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: GalaxyColors.light.border,
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginBottom: 16,
+    shadowColor: GalaxyColors.light.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  
+  googleButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: GalaxyColors.light.text,
+    marginLeft: 12,
+  },
+  
   footer: {
     alignItems: 'center',
     marginTop: 24,
@@ -559,6 +781,32 @@ const styles = {
   
   linkText: {
     color: GalaxyColors.light.primary,
+    fontWeight: '600',
+  },
+  
+  infoContainer: {
+    backgroundColor: '#e3f2fd',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: GalaxyColors.light.primary,
+  },
+  
+  infoText: {
+    color: GalaxyColors.light.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  
+  forgotPasswordButton: {
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  
+  forgotPasswordText: {
+    color: GalaxyColors.light.primary,
+    fontSize: 16,
     fontWeight: '600',
   },
   
