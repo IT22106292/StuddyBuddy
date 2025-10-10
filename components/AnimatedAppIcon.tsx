@@ -59,13 +59,13 @@ export const AnimatedAppIcon: React.FC<AnimatedAppIconProps> = ({
               toValue: 1,
               duration: 2000,
               easing: Easing.inOut(Easing.sin),
-              useNativeDriver: false,
+              useNativeDriver: true, // <-- changed from false to true
             }),
             Animated.timing(glowAnim, {
               toValue: 0,
               duration: 2000,
               easing: Easing.inOut(Easing.sin),
-              useNativeDriver: false,
+              useNativeDriver: true, // <-- changed from false to true
             }),
           ])
         ).start();

@@ -1587,22 +1587,6 @@ Anyone with this link can download the file directly.`,
           />
         )}
         {activeTab === "students" && (
-          <FlatList
-            data={filteredStudents}
-            renderItem={renderStudent}
-            keyExtractor={(item) => item.id.toString()}
-            scrollEnabled={false}
-          />
-        )}
-        {activeTab === "tutors" && (
-          <FlatList
-            data={filteredTutors}
-            renderItem={renderTutor}
-            keyExtractor={(item) => item.id.toString()}
-            scrollEnabled={false}
-          />
-        )}
-        {activeTab === "students" && (
           <View>
             {/* Group Chats Section */}
             <View style={{ marginBottom: 16 }}>
