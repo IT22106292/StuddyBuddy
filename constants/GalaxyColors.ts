@@ -254,3 +254,6 @@ export const GalaxyGradients = {
   imageOverlay: ['rgba(11, 17, 33, 0.9)', 'rgba(2, 132, 199, 0.5)'],  // Deep space to cosmic blue
   heroOverlay: ['rgba(11, 17, 33, 0.8)', 'rgba(125, 211, 252, 0.3)'], // Deep space to light blue
 };
+
+// Export individual color constants for direct use
+export { cosmicGray, starGold, nebulaPink, cosmicBlue, spacePurple };

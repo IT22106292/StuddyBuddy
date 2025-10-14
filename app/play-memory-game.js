@@ -13,6 +13,7 @@ import {
   View
 } from 'react-native';
 import { auth, db } from '../firebase/firebaseConfig';
+import { smartNavigateBack } from '../utils/navigation';
 
 const { width } = Dimensions.get('window');
 
@@ -68,12 +69,12 @@ export default function PlayMemoryGame() {
         initializeGame(data);
       } else {
         Alert.alert('Error', 'Game not found');
-        router.back();
+        smartNavigateBack(router, '/play-memory-game');
       }
     } catch (error) {
       console.error('Error loading game:', error);
       Alert.alert('Error', 'Failed to load game');
-      router.back();
+      smartNavigateBack(router, '/play-memory-game');
     } finally {
       setLoading(false);
     }
@@ -84,7 +85,7 @@ export default function PlayMemoryGame() {
     
     if (!pairs || pairs.length === 0) {
       Alert.alert('Error', 'No question-answer pairs found in this game');
-      router.back();
+      smartNavigateBack(router, '/play-memory-game');
       return;
     }
 
@@ -226,7 +227,7 @@ export default function PlayMemoryGame() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => smartNavigateBack(router, '/play-memory-game')}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
