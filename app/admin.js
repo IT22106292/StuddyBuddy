@@ -3,12 +3,13 @@ import * as Print from 'expo-print';
 import { useRouter } from "expo-router";
 import * as Sharing from 'expo-sharing';
 import { deleteApp, initializeApp } from "firebase/app";
-import { createUserWithEmailAndPassword, getAuth, signOut } from "firebase/auth";
+import { createUserWithEmailAndPassword, getAuth, sendEmailVerification, signOut } from "firebase/auth";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { deleteObject, ref as storageRef } from "firebase/storage";
 import { useEffect, useState } from "react";
 import { Alert, Dimensions, FlatList, Linking, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import app, { auth, db, storage } from "../firebase/firebaseConfig";
+import { smartNavigateBack } from "../utils/navigation";
 
 // Add this import for the chart components
 import { ContentDistributionChart, UserGrowthChart, UserRoleChart } from "../components/ui/ChartComponents";
@@ -3195,37 +3196,149 @@ File location: ${uri}
       const name = regName.trim();
       const position = regPosition.trim();
       const phone = regPhone.trim();
-      if (!email || !email.includes('@')) { console.error('Invalid email'); return; }
-      if (!password || password.length < 6) { console.error('Password must be at least 6 characters'); return; }
-      if (!name) { console.error('Enter name'); return; }
-      if (!position) { console.error('Enter position'); return; }
-      if (!phone) { console.error('Enter phone number'); return; }
+      
+      // Validation
+      if (!email || !email.includes('@')) {
+        Alert.alert('Error', 'Please enter a valid email address');
+        return;
+      }
+      if (!password || password.length < 6) {
+        Alert.alert('Error', 'Password must be at least 6 characters');
+        return;
+      }
+      if (!name) {
+        Alert.alert('Error', 'Please enter admin name');
+        return;
+      }
+      if (!position) {
+        Alert.alert('Error', 'Please enter admin position');
+        return;
+      }
+      if (!phone) {
+        Alert.alert('Error', 'Please enter phone number');
+        return;
+      }
 
       setRegSubmitting(true);
+      
       // Create user using a secondary app to avoid replacing current admin session
-      const temp = initializeApp(app.options, 'admin-create');
+      const temp = initializeApp(app.options, 'admin-create-' + Date.now());
       const tempAuth = getAuth(temp);
+      
+      // Create the user account
       const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
       const uid = cred.user.uid;
+      
+      // Send email verification with better error handling
+      try {
+        console.log('Attempting to send verification email to:', email);
+        console.log('User object:', cred.user);
+        console.log('User email verified status:', cred.user.emailVerified);
+        
+        await sendEmailVerification(cred.user);
+        console.log('✅ Verification email sent successfully to:', email);
+      } catch (emailError) {
+        console.error('❌ Failed to send verification email:', emailError.message);
+        console.error('Email error details:', emailError);
+        
+        // Show specific error to admin
+        Alert.alert(
+          'Warning',
+          `Admin account created but verification email failed to send.\n\nError: ${emailError.message}\n\nPlease check Firebase console settings.`
+        );
+      }
+      
+      // Create complete user document structure matching regular users
       await setDoc(doc(db, 'users', uid), {
         email,
-        name,
+        fullName: name, // Use fullName instead of name to match signin expectations
         position,
         phone,
         isAdmin: true,
         isTutor: false,
+        subjects: [], // Required for admin users
+        expertiseLevel: 'Expert', // Default for admins
+        achievements: [], // Initialize empty achievements
+        profileImage: '', // Initialize empty profile image
         createdAt: new Date(),
         updatedAt: new Date(),
+        emailVerified: false, // Will be updated when user verifies email
       }, { merge: true });
+      
+      // Clean up secondary app
       try { await tempAuth.signOut(); } catch {}
       try { await deleteApp(temp); } catch {}
-      // Silently handle success without showing popup
+      
+      // Show success message
+        Alert.alert(
+        'Admin Created Successfully', 
+        `Admin account created for ${email}.\n\nA verification email should have been sent. If the new admin doesn't receive it, check spam folder or use the manual verification option.`,
+        [
+          { text: 'OK' },
+          { 
+            text: 'Manual Verification', 
+            onPress: () => resendVerificationEmail(email) 
+          }
+        ]
+      );      // Reset form
       setRegisterAdminVisible(false);
-      setRegEmail(""); setRegPassword(""); setRegName(""); setRegPosition(""); setRegPhone("");
-    } catch (e) {
-      // Silently handle error without showing popup
-      console.error(e?.message || 'Failed to create admin');
+      setRegEmail("");
+      setRegPassword("");
+      setRegName("");
+      setRegPosition("");
+      setRegPhone("");
+      
+    } catch (error) {
+      console.error('Admin creation error:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to create admin account. Please try again.'
+      );
     } finally {
+      setRegSubmitting(false);
+    }
+  };
+
+  // Manual email verification function for troubleshooting
+  const resendVerificationEmail = async (userEmail) => {
+    try {
+      Alert.prompt(
+        'Resend Verification Email',
+        `Enter the email address to resend verification to:`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Send',
+            onPress: async (email) => {
+              if (!email || !email.includes('@')) {
+                Alert.alert('Error', 'Please enter a valid email address');
+                return;
+              }
+              
+              try {
+                // Create temporary auth instance to send verification
+                const temp = initializeApp(app.options, 'verify-email-' + Date.now());
+                const tempAuth = getAuth(temp);
+                
+                // Note: This is a workaround - ideally Firebase Admin SDK should be used
+                Alert.alert(
+                  'Manual Verification Required',
+                  `To send verification email to ${email}:\n\n1. Go to Firebase Console\n2. Navigate to Authentication > Users\n3. Find the user with email: ${email}\n4. Click the "Send email verification" option\n\nOr ask the user to use the "Resend Verification" option in the email verification page.`
+                );
+                
+                try { await deleteApp(temp); } catch {}
+              } catch (error) {
+                console.error('Verification email error:', error);
+                Alert.alert('Error', 'Failed to send verification email: ' + error.message);
+              }
+            }
+          }
+        ],
+        'plain-text',
+        userEmail || ''
+      );
+    } catch (error) {
+      console.error('Resend verification error:', error);
     }
   };
 
@@ -3458,7 +3571,7 @@ File location: ${uri}
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton} 
-          onPress={() => { try { if (router.canGoBack?.()) { router.back(); } else { router.replace('/home'); } } catch { try { router.push('/home'); } catch {} } }}
+          onPress={() => smartNavigateBack(router, '/admin')}
         >
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
