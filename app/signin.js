@@ -10,6 +10,8 @@ import { useEffect, useState } from "react";
 import {
   Dimensions,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -26,8 +28,6 @@ import { GalaxyColors } from "../constants/GalaxyColors";
 import { GlobalStyles } from "../constants/GlobalStyles";
 import { auth } from "../firebase/firebaseConfig";
 
-const { width, height } = Dimensions.get('window');
-
 export default function SignInScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -38,6 +38,10 @@ export default function SignInScreen() {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
+  const [dimensions, setDimensions] = useState(() => {
+    const { width, height } = Dimensions.get('window');
+    return { width, height };
+  });
 
   // Initialize WebBrowser for Google Auth
   useEffect(() => {
@@ -47,6 +51,15 @@ export default function SignInScreen() {
   // Log when component mounts
   useEffect(() => {
     console.log('SignInScreen mounted');
+  }, []);
+
+  // Listen for dimension changes
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions({ width: window.width, height: window.height });
+    });
+
+    return () => subscription?.remove();
   }, []);
 
   // Log environment variables for debugging
@@ -216,15 +229,16 @@ export default function SignInScreen() {
   };
 
   // For mobile devices, we'll stack the image and form vertically
+  const { width, height } = dimensions;
   const isMobile = width < 768;
 
   return (
-    <SafeAreaView style={GlobalStyles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={GalaxyColors.light.primary} />
       
       {isMobile ? (
         // Mobile layout - stacked with image at top
-        <>
+        <SafeAreaView style={styles.mobileContainer}>
           {/* Image Header for Mobile */}
           <View style={styles.mobileImageHeader}>
             <Image 
@@ -244,12 +258,17 @@ export default function SignInScreen() {
             </View>
           </View>
 
-          <ScrollView 
-            style={styles.scrollContainer}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoid}
           >
-            <View style={styles.formContainer}>
+            <ScrollView 
+              style={styles.scrollContainer}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.formContainer}>
               <View style={GlobalStyles.form}>
                 {error ? (
                   <View style={styles.errorContainer}>
@@ -379,8 +398,9 @@ export default function SignInScreen() {
                 </Text>
               </View>
             </View>
-          </ScrollView>
-        </>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       ) : (
         // Desktop layout - two columns
         <View style={styles.twoColumnContainer}>
@@ -545,15 +565,29 @@ export default function SignInScreen() {
         message="Signing you in..."
         onComplete={() => setShowLoadingScreen(false)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: GalaxyColors.light.background,
+  },
+  
   // Mobile-specific styles
+  mobileContainer: {
+    flex: 1,
+  },
+  
+  keyboardAvoid: {
+    flex: 1,
+  },
+  
   mobileImageHeader: {
-    height: 280,
+    height: Math.min(280, Dimensions.get('window').height * 0.35),
     position: 'relative',
+    width: '100%',
   },
   
   mobileSignupImage: {
@@ -575,6 +609,7 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    paddingTop: 40,
   },
   
   // Two-column layout styles
@@ -585,7 +620,7 @@ const styles = {
   
   imageColumn: {
     flex: 1,
-    minHeight: height,
+    minHeight: Dimensions.get('window').height,
   },
   
   signupImage: {
@@ -621,18 +656,20 @@ const styles = {
   },
   
   welcomeTitle: {
-    fontSize: 32,
+    fontSize: Math.min(32, Dimensions.get('window').width * 0.08),
     fontWeight: '700',
     color: GalaxyColors.light.textInverse,
     marginBottom: 8,
     textAlign: 'center',
+    paddingHorizontal: 10,
   },
   
   welcomeSubtitle: {
-    fontSize: 16,
+    fontSize: Math.min(16, Dimensions.get('window').width * 0.04),
     color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
     lineHeight: 24,
+    paddingHorizontal: 20,
   },
   
   scrollContainer: {
@@ -642,11 +679,14 @@ const styles = {
   
   scrollContent: {
     paddingTop: 20,
+    paddingBottom: 100,
+    minHeight: Dimensions.get('window').height * 0.65,
   },
   
   formContainer: {
     paddingHorizontal: 20,
     paddingBottom: 40,
+    minHeight: 'auto',
   },
   
   errorContainer: {
@@ -822,4 +862,4 @@ const styles = {
     alignItems: 'center',
     padding: 20,
   },
-};
+});
