@@ -2,6 +2,9 @@ import React, { useRef, useState } from "react";
 import { SafeAreaView, View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { GalaxyAnimation } from "../components/GalaxyAnimation";
+import { GalaxyColors } from "../constants/GalaxyColors";
+import { smartNavigateBack } from "../utils/navigation";
 import Constants from "expo-constants";
 
 // This is a stub using fetch to Google Gemini's free API compatible endpoint.
@@ -220,20 +223,28 @@ export default function AIChatbotScreen() {
 
   const renderItem = ({ item }) => (
     <View style={[styles.msg, item.role === "user" ? styles.mine : styles.theirs]}>
-      <Text style={styles.msgText}>{item.text}</Text>
+      <Text style={[
+        styles.msgText, 
+        { color: item.role === "user" ? GalaxyColors.light.surface : GalaxyColors.light.text }
+      ]}>
+        {item.text}
+      </Text>
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.title}>🤖 AI Chatbot</Text>
+    <View style={styles.container}>
+      <GalaxyAnimation style={styles.galaxyBackground} />
+      
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => smartNavigateBack(router, '/ai-chatbot')}
+          >
+            <Ionicons name="arrow-back" size={24} color={GalaxyColors.light.icon} />
+          </TouchableOpacity>
+          <Text style={styles.title}>✨ AI Chatbot</Text>
         {isLoading && (
           <View style={styles.loadingIndicator}>
             <Text style={styles.loadingText}>Thinking...</Text>
@@ -281,140 +292,167 @@ export default function AIChatbotScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { 
+    flex: 1,
+  },
+  galaxyBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  safeArea: {
+    flex: 1,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: GalaxyColors.light.cardBackground,
     borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    elevation: 2,
-    shadowColor: "#000",
+    borderBottomColor: GalaxyColors.light.border,
+    elevation: 3,
+    shadowColor: GalaxyColors.light.shadow,
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   backButton: {
     padding: 8,
     marginRight: 12,
+    borderRadius: 20,
+    backgroundColor: GalaxyColors.light.surface,
   },
   title: { 
-    fontSize: 18, 
-    fontWeight: "600", 
-    color: "#333",
+    fontSize: 20, 
+    fontWeight: "700", 
+    color: GalaxyColors.light.text,
     flex: 1 
   },
   loadingIndicator: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#e3f2fd",
+    backgroundColor: GalaxyColors.light.accent + '20',
     borderRadius: 20,
-    borderColor: "#bbdefb",
+    borderColor: GalaxyColors.light.accent,
     borderWidth: 1,
   },
   loadingText: {
     fontSize: 13,
-    color: "#1976d2",
+    color: GalaxyColors.light.accent,
     fontWeight: "600",
   },
   welcomeContainer: {
     padding: 24,
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: GalaxyColors.light.cardBackground,
     margin: 20,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#e1e5e9',
-    shadowColor: "#000",
+    borderColor: GalaxyColors.light.border,
+    shadowColor: GalaxyColors.light.shadow,
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
   },
   welcomeText: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#1976d2',
+    color: GalaxyColors.light.primary,
     marginBottom: 12,
     textAlign: 'center',
   },
   instructionText: {
-    fontSize: 15,
-    color: '#555',
+    fontSize: 16,
+    color: GalaxyColors.light.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
     paddingHorizontal: 10,
   },
-  list: { padding: 16 },
+  list: { 
+    padding: 16,
+    paddingBottom: 100,
+  },
   msg: {
-    padding: 16, // Increased padding for better readability
-    marginVertical: 6, // Increased vertical spacing
-    borderRadius: 18, // More rounded corners
-    maxWidth: "85%", // Slightly wider messages
-    shadowColor: "#000", // Added subtle shadow for depth
+    padding: 16,
+    marginVertical: 8,
+    borderRadius: 20,
+    maxWidth: "85%",
+    shadowColor: GalaxyColors.light.shadow,
     shadowOffset: {
       width: 0,
-      height: 1,
+      height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2, // For Android shadow
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   mine: {
-    backgroundColor: "#007AFF", // User messages (blue)
+    backgroundColor: GalaxyColors.light.primary,
     alignSelf: "flex-end",
   },
   theirs: {
-    backgroundColor: "#f0f0f0", // AI messages (light gray)
+    backgroundColor: GalaxyColors.light.cardBackground,
     alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: GalaxyColors.light.border,
   },
   msgText: {
-    color: "#333", // Dark text for better visibility on both light and blue backgrounds
     fontSize: 16,
-    lineHeight: 22, // Better line spacing for readability
+    lineHeight: 22,
   },
   inputRow: {
     flexDirection: "row",
     padding: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: GalaxyColors.light.cardBackground,
     alignItems: "flex-end",
     borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
+    borderTopColor: GalaxyColors.light.border,
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: GalaxyColors.light.border,
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginRight: 12,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: GalaxyColors.light.surface,
     fontSize: 16,
     maxHeight: 120,
-    color: "#333", // Added text color for better visibility
+    color: GalaxyColors.light.text,
   },
   sendBtn: {
-    backgroundColor: "#007AFF",
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+    backgroundColor: GalaxyColors.light.primary,
+    borderRadius: 24,
+    width: 48,
+    height: 48,
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: GalaxyColors.light.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sendBtnDisabled: {
-    backgroundColor: "#a0a0a0",
+    backgroundColor: GalaxyColors.light.textSecondary,
   },
 });

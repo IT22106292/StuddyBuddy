@@ -2,10 +2,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { ImageBackground, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { GalaxyAnimation } from "../components/GalaxyAnimation";
 import GroupChat from "../components/GroupChat";
 import StudentGroupChat from "../components/StudentGroupChat";
+import { GalaxyColors } from "../constants/GalaxyColors";
 import { auth, db } from "../firebase/firebaseConfig";
+import { smartNavigateBack } from "../utils/navigation";
 
 export default function ChatMenuScreen() {
   const router = useRouter();
@@ -33,20 +36,18 @@ export default function ChatMenuScreen() {
   }, []);
 
   return (
-    <ImageBackground 
-      source={require('../assets/images/chatImg.png')} 
-      style={styles.backgroundImage}
-      resizeMode="cover"
-    >
-      <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <GalaxyAnimation style={styles.galaxyBackground} />
+      
+      <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <TouchableOpacity 
             style={styles.backButton} 
-            onPress={() => router.back()}
+            onPress={() => smartNavigateBack(router, '/chat-menu')}
           >
-            <Ionicons name="arrow-back" size={24} color="#333" />
+            <Ionicons name="arrow-back" size={24} color={GalaxyColors.light.icon} />
           </TouchableOpacity>
-          <Text style={styles.title}>Chat Menu</Text>
+          <Text style={styles.title}>💬 Chat Menu</Text>
         </View>
 
         <View style={styles.menuList}>
@@ -61,38 +62,50 @@ export default function ChatMenuScreen() {
               }
             }}
           >
-            <View style={styles.itemLeft}>
-              <Ionicons name="chatbubbles-outline" size={24} color="#007AFF" />
-              <Text style={styles.itemText}>Group Chats</Text>
+            <View style={styles.iconContainer}>
+              <Ionicons name="people" size={24} color={GalaxyColors.light.primary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>Group Chats</Text>
+              <Text style={styles.itemSubtitle}>Connect with study groups</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={GalaxyColors.light.iconSecondary} />
           </TouchableOpacity>
 
           {/* Global Chat */}
           <TouchableOpacity style={styles.item} onPress={() => router.push("/global-chat")}>
-            <View style={styles.itemLeft}>
-              <Ionicons name="globe-outline" size={24} color="#34C759" />
-              <Text style={styles.itemText}>Global Chat</Text>
+            <View style={styles.iconContainer}>
+              <Ionicons name="globe" size={24} color={GalaxyColors.light.success} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>Global Chat</Text>
+              <Text style={styles.itemSubtitle}>Chat with everyone</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={GalaxyColors.light.iconSecondary} />
           </TouchableOpacity>
 
           {/* AI Chatbot */}
           <TouchableOpacity style={styles.item} onPress={() => router.push("/ai-chatbot")}>
-            <View style={styles.itemLeft}>
-              <Ionicons name="sparkles-outline" size={24} color="#7C4DFF" />
-              <Text style={styles.itemText}>AI Chatbot</Text>
+            <View style={styles.iconContainer}>
+              <Ionicons name="sparkles" size={24} color={GalaxyColors.light.secondary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>AI Chatbot</Text>
+              <Text style={styles.itemSubtitle}>Get instant help from AI</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={GalaxyColors.light.iconSecondary} />
           </TouchableOpacity>
 
           {/* Help Desk */}
           <TouchableOpacity style={styles.item} onPress={() => router.push("/helpdesk")}>
-            <View style={styles.itemLeft}>
-              <Ionicons name="help-buoy-outline" size={24} color="#FF9500" />
-              <Text style={styles.itemText}>Help Desk</Text>
+            <View style={styles.iconContainer}>
+              <Ionicons name="help-buoy" size={24} color={GalaxyColors.light.accent} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
+            <View style={styles.itemContent}>
+              <Text style={styles.itemTitle}>Help Desk</Text>
+              <Text style={styles.itemSubtitle}>Find tutors and helpers</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={GalaxyColors.light.iconSecondary} />
           </TouchableOpacity>
 
 
@@ -122,46 +135,100 @@ export default function ChatMenuScreen() {
           studentId={auth.currentUser?.uid}
         />
       </SafeAreaView>
-    </ImageBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  backgroundImage: {
+  container: { 
     flex: 1,
+    backgroundColor: GalaxyColors.light.background,
+  },
+  galaxyBackground: {
+    position: 'absolute',
     width: '100%',
     height: '100%',
+    zIndex: 1,
   },
-  container: { 
-    flex: 1, 
-    backgroundColor: "rgba(245, 245, 245, 0.85)" 
+  safeArea: {
+    flex: 1,
+    zIndex: 2,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
+    padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderBottomColor: GalaxyColors.light.border,
+    backgroundColor: GalaxyColors.light.surface + 'CC',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    backdropFilter: 'blur(10px)',
   },
   backButton: {
     marginRight: 16,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: GalaxyColors.light.backgroundSecondary,
   },
-  title: { fontSize: 24, fontWeight: "bold", color: "#111" },
+  title: { 
+    fontSize: 26, 
+    fontWeight: "800", 
+    color: GalaxyColors.light.text,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
   menuList: { 
-    paddingHorizontal: 16,
-    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingTop: 24,
   },
   item: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    marginBottom: 12,
+    backgroundColor: GalaxyColors.light.card,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 18,
+    marginBottom: 16,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: GalaxyColors.light.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+    backdropFilter: 'blur(10px)',
   },
-  itemLeft: { flexDirection: "row", alignItems: "center" },
-  itemText: { marginLeft: 10, fontSize: 16, color: "#111" },
+  iconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: GalaxyColors.light.backgroundSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  itemContent: {
+    flex: 1,
+  },
+  itemTitle: { 
+    fontSize: 18, 
+    fontWeight: "700", 
+    color: GalaxyColors.light.text,
+    marginBottom: 2,
+  },
+  itemSubtitle: {
+    fontSize: 14,
+    color: GalaxyColors.light.textSecondary,
+    fontWeight: '500',
+  },
 });

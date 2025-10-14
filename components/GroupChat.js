@@ -25,6 +25,8 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { GalaxyAnimation } from './GalaxyAnimation';
+import { GalaxyColors } from '../constants/GalaxyColors';
 import { auth, db } from '../firebase/firebaseConfig';
 
 export default function GroupChat({ visible, onClose, tutorId }) {
@@ -1195,13 +1197,16 @@ export default function GroupChat({ visible, onClose, tutorId }) {
       animationType="slide"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#007AFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Group Chats</Text>
+      <View style={styles.container}>
+        <GalaxyAnimation style={styles.galaxyBackground} />
+        
+        <SafeAreaView style={styles.safeArea}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onClose} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color={GalaxyColors.light.icon} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>✨ Group Chats</Text>
           <View style={styles.headerButtons}>
             
             <TouchableOpacity
@@ -1412,6 +1417,12 @@ export default function GroupChat({ visible, onClose, tutorId }) {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
+                <TouchableOpacity 
+                  onPress={() => setShowGroupInfoModal(false)} 
+                  style={styles.modalCloseButton}
+                >
+                  <Ionicons name="arrow-back" size={24} color="#333" />
+                </TouchableOpacity>
                 <Text style={styles.modalTitle}>Group Info</Text>
                 <View style={styles.modalHeaderActions}>
                   <TouchableOpacity
@@ -1423,10 +1434,6 @@ export default function GroupChat({ visible, onClose, tutorId }) {
                   >
                     <Text style={styles.addStudentsButtonTextHeader}>Add Students</Text>
                   </TouchableOpacity>
-                  
-                  
-                  
-                  
                 </View>
               </View>
 
@@ -1559,7 +1566,8 @@ export default function GroupChat({ visible, onClose, tutorId }) {
             </View>
           </View>
         </Modal>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -1567,26 +1575,47 @@ export default function GroupChat({ visible, onClose, tutorId }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  galaxyBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  safeArea: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: 'white',
+    backgroundColor: GalaxyColors.light.cardBackground,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: GalaxyColors.light.border,
+    elevation: 3,
+    shadowColor: GalaxyColors.light.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
+    color: GalaxyColors.light.text,
+    flex: 1,
+    textAlign: 'center',
   },
   backButton: {
     padding: 8,
+    borderRadius: 20,
+    backgroundColor: GalaxyColors.light.surface,
   },
   createButton: {
     padding: 8,
+    borderRadius: 20,
+    backgroundColor: GalaxyColors.light.surface,
   },
   headerButtons: {
     flexDirection: 'row',
@@ -1665,6 +1694,9 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  modalCloseButton: {
+    padding: 8,
   },
   input: {
     borderWidth: 1,
