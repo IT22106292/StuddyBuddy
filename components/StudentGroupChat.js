@@ -23,6 +23,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { GalaxyAnimation } from './GalaxyAnimation';
+import { GalaxyColors } from '../constants/GalaxyColors';
 import { auth, db } from '../firebase/firebaseConfig';
 
 export default function StudentGroupChat({ visible, onClose, studentId }) {

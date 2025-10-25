@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { GalaxyColors } from "../constants/GalaxyColors";
 import { auth, db } from "../firebase/firebaseConfig";
+import { smartNavigateBack, safeReplace } from "../utils/navigation";
 
 const SUBJECT_CATEGORIES = [
   "Mathematics",
@@ -38,6 +39,8 @@ export default function HelpdeskApplyScreen() {
   const [yearsExperience, setYearsExperience] = useState("");
   const [isLeaving, setIsLeaving] = useState(false); // Track if user is in leave process
   const [recentlyUpdated, setRecentlyUpdated] = useState(false); // Track if profile was recently updated
+  const [isSubmitting, setIsSubmitting] = useState(false); // Track if application is being submitted
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false); // Show success message after submission
 
   useEffect(() => {
     const run = async () => {
@@ -166,6 +169,9 @@ export default function HelpdeskApplyScreen() {
         return;
       }
 
+      // Start loading state
+      setIsSubmitting(true);
+
       // Get user's full name from users collection
       let userFullName = auth.currentUser?.displayName || "";
       try {
@@ -199,6 +205,10 @@ export default function HelpdeskApplyScreen() {
           
           // Set recently updated flag even for subject changes
           setRecentlyUpdated(true);
+          
+          // Show success message
+          setShowSuccessMessage(true);
+          setTimeout(() => setShowSuccessMessage(false), 4000); // Hide after 4 seconds
           
           Alert.alert(
             "Subject Change Request Submitted", 
@@ -236,6 +246,10 @@ export default function HelpdeskApplyScreen() {
         // Set recently updated flag for new applications
         setRecentlyUpdated(true);
         
+        // Show success message
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 4000); // Hide after 4 seconds
+        
         Alert.alert(
           "Application Submitted", 
           "Your application has been submitted and is pending admin approval. You will be notified when it's approved."
@@ -244,6 +258,9 @@ export default function HelpdeskApplyScreen() {
     } catch (e) {
       console.error("Error submitting application:", e);
       Alert.alert("Error", isApprovedHelper ? "Failed to update profile" : "Failed to submit application");
+    } finally {
+      // Stop loading state
+      setIsSubmitting(false);
     }
   };
 
@@ -357,11 +374,11 @@ export default function HelpdeskApplyScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => router.back()}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => smartNavigateBack(router, '/helpdesk-apply')}
         >
-          <Ionicons name="arrow-back" size={24} color={GalaxyColors.light.icon} />
+          <Ionicons name="arrow-back" size={24} color={GalaxyColors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>
           {isApprovedHelper ? "Update Helper Profile" : "Apply as Helper"}
@@ -464,6 +481,18 @@ export default function HelpdeskApplyScreen() {
           />
         </View>
         
+        {/* Success Message */}
+        {showSuccessMessage && (
+          <View style={styles.successMessageContainer}>
+            <Ionicons name="checkmark-circle" size={28} color="#4CAF50" />
+            <Text style={styles.successMessageTitle}>Request Processing</Text>
+            <Text style={styles.successMessageText}>
+              Your application has been submitted successfully and is being processed. 
+              You will be notified when the admin reviews your request.
+            </Text>
+          </View>
+        )}
+
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>
           {/* Show either the update button or the "still updated" message */}
@@ -473,11 +502,24 @@ export default function HelpdeskApplyScreen() {
               <Text style={styles.updatedMessageText}>Profile Updated</Text>
             </View>
           ) : (
-            <TouchableOpacity style={styles.submitButton} onPress={submit}>
-              <Ionicons name="save-outline" size={20} color="#fff" />
-              <Text style={styles.submitButtonText}>
-                {isApprovedHelper ? "Update Profile" : "Submit Application"}
-              </Text>
+            <TouchableOpacity 
+              style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]} 
+              onPress={submit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Ionicons name="hourglass-outline" size={20} color="#fff" />
+                  <Text style={styles.submitButtonText}>Processing...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="save-outline" size={20} color="#fff" />
+                  <Text style={styles.submitButtonText}>
+                    {isApprovedHelper ? "Update Profile" : "Submit Application"}
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
           )}
           
@@ -869,5 +911,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 8,
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
+    backgroundColor: '#999',
+  },
+  successMessageContainer: {
+    backgroundColor: '#E8F5E8',
+    borderColor: '#4CAF50',
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    alignItems: 'center',
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  successMessageTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    marginTop: 8,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  successMessageText: {
+    fontSize: 14,
+    color: '#388E3C',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

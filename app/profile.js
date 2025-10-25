@@ -18,7 +18,9 @@ import {
   View,
 } from "react-native";
 import * as Progress from 'react-native-progress';
+
 import { auth, db, storage } from "../firebase/firebaseConfig";
+
 
 const { width } = Dimensions.get('window');
 
@@ -484,7 +486,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => smartNavigateBack(router, '/profile')}>
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>

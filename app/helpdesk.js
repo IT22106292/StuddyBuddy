@@ -6,6 +6,7 @@ import { Alert, FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View
 import { GalaxyAnimation } from "../components/GalaxyAnimation";
 import { GalaxyColors } from "../constants/GalaxyColors";
 import { auth, db } from "../firebase/firebaseConfig";
+import { smartNavigateBack } from "../utils/navigation";
 
 // Firestore layout:
 // helpdeskApplicants/{uid}: { subjects: [..], bio, status: 'pending'|'approved'|'rejected' }
@@ -36,6 +37,7 @@ export default function HelpdeskScreen() {
   const [selectedSubject, setSelectedSubject] = useState("All");
   const [helpers, setHelpers] = useState([]);
   const [isApprovedHelper, setIsApprovedHelper] = useState(false);
+  const [hasLeftProgram, setHasLeftProgram] = useState(false); // Track if user left the program
   const [studentChats, setStudentChats] = useState([]);
   const [viewMode, setViewMode] = useState('chats'); // 'helpers' or 'chats'
   const [refreshKey, setRefreshKey] = useState(0); // Key to force re-render
@@ -51,14 +53,40 @@ export default function HelpdeskScreen() {
         // Check if helper has left the program
         if (helperData.left) {
           setIsApprovedHelper(false);
+          setHasLeftProgram(true);
         } else {
           setIsApprovedHelper(true);
+          setHasLeftProgram(false);
         }
       } else {
         setIsApprovedHelper(false);
+        setHasLeftProgram(false);
       }
     } catch (error) {
       console.error("Error checking helper status:", error);
+    }
+  };
+
+  const rejoinHelperProgram = async () => {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+
+      console.log('📋 [HELPDESK] Rejoining helper program for UID:', uid);
+      
+      // Remove the 'left' flag to reactivate helper status
+      await setDoc(doc(db, "helpdeskHelpers", uid), { 
+        left: false,
+        rejoinedAt: new Date()
+      }, { merge: true });
+      
+      console.log('📋 [HELPDESK] Helper status reactivated');
+      setIsApprovedHelper(true);
+      setHasLeftProgram(false);
+      Alert.alert("Welcome Back!", "Your helper status has been reactivated. You can now help students again!");
+    } catch (error) {
+      console.error('📋 [HELPDESK] Error rejoining helper program:', error);
+      Alert.alert("Error", "Failed to rejoin helper program. Please try again.");
     }
   };
 
@@ -67,22 +95,39 @@ export default function HelpdeskScreen() {
     const checkHelperStatus = async () => {
       try {
         const uid = auth.currentUser?.uid;
-        if (!uid) return;
+        if (!uid) {
+          console.log('📋 [HELPDESK] No authenticated user');
+          return;
+        }
         
+        console.log('📋 [HELPDESK] Checking helper status for UID:', uid);
+        
+        // First check if user exists in helpdeskHelpers collection
         const helperDoc = await getDoc(doc(db, "helpdeskHelpers", uid));
+        console.log('📋 [HELPDESK] Helper document exists:', helperDoc.exists());
+        
         if (helperDoc.exists()) {
           const helperData = helperDoc.data();
+          console.log('📋 [HELPDESK] Helper data:', helperData);
+          
           // Check if helper has left the program
           if (helperData.left) {
+            console.log('📋 [HELPDESK] Helper has left the program');
             setIsApprovedHelper(false);
+            setHasLeftProgram(true);
           } else {
+            console.log('📋 [HELPDESK] Helper is active - setting isApprovedHelper to true');
             setIsApprovedHelper(true);
+            setHasLeftProgram(false);
           }
         } else {
+          console.log('📋 [HELPDESK] No helper document found - setting isApprovedHelper to false');
           setIsApprovedHelper(false);
+          setHasLeftProgram(false);
         }
       } catch (error) {
-        console.error("Error checking helper status:", error);
+        console.error("📋 [HELPDESK] Error checking helper status:", error);
+        setIsApprovedHelper(false);
       }
     };
     checkHelperStatus();
@@ -101,28 +146,44 @@ export default function HelpdeskScreen() {
       const checkHelperStatusOnFocus = async () => {
         try {
           const uid = auth.currentUser?.uid;
-          if (!uid) return;
+          if (!uid) {
+            console.log('📋 [HELPDESK] Focus check - No authenticated user');
+            return;
+          }
           
-          console.log('📋 [HELPDESK] Checking helper status for user:', uid);
+          console.log('📋 [HELPDESK] Focus check - UID:', uid);
           const helperDoc = await getDoc(doc(db, "helpdeskHelpers", uid));
+          console.log('📋 [HELPDESK] Focus check - Helper document exists:', helperDoc.exists());
+          
           if (helperDoc.exists()) {
             const helperData = helperDoc.data();
-            console.log('📋 [HELPDESK] Helper data found:', helperData);
+            console.log('📋 [HELPDESK] Focus check - Helper data:', helperData);
             
             // Check if helper has left the program
             if (helperData.left) {
-              console.log('📋 [HELPDESK] User has left helper program');
+              console.log('📋 [HELPDESK] Focus check - User has left helper program');
               setIsApprovedHelper(false);
+              setHasLeftProgram(true);
             } else {
-              console.log('📋 [HELPDESK] User is still an active helper');
+              console.log('📋 [HELPDESK] Focus check - User is active helper, setting state to true');
               setIsApprovedHelper(true);
+              setHasLeftProgram(false);
             }
           } else {
-            console.log('📋 [HELPDESK] No helper document found');
+            // Also check applicant status for debugging
+            const applicantDoc = await getDoc(doc(db, "helpdeskApplicants", uid));
+            if (applicantDoc.exists()) {
+              const applicantData = applicantDoc.data();
+              console.log('📋 [HELPDESK] Focus check - Applicant status:', applicantData.status);
+            }
+            
+            console.log('📋 [HELPDESK] Focus check - No helper document found, setting state to false');
             setIsApprovedHelper(false);
+            setHasLeftProgram(false);
           }
         } catch (error) {
           console.error('📋 [HELPDESK] Error checking helper status on focus:', error);
+          setIsApprovedHelper(false);
         }
       };
       checkHelperStatusOnFocus();
@@ -350,19 +411,34 @@ export default function HelpdeskScreen() {
         <View style={styles.header}>
           <TouchableOpacity 
             style={styles.backButton} 
-            onPress={() => router.back()}
+            onPress={() => smartNavigateBack(router, '/helpdesk')}
           >
             <Ionicons name="arrow-back" size={24} color={GalaxyColors.light.icon} />
           </TouchableOpacity>
-          <Text style={styles.title}>Help Desk</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Help Desk</Text>
+            <Text style={styles.debugText}>
+              Status: {isApprovedHelper ? 'HELPER ✅' : hasLeftProgram ? 'LEFT PROGRAM 🔄' : 'NOT HELPER ❌'}
+            </Text>
+          </View>
           {!isApprovedHelper ? (
-            <TouchableOpacity 
-              style={styles.applyButton}
-              onPress={() => router.push('/helpdesk-apply')}
-            >
-              <Ionicons name="briefcase-outline" size={18} color={GalaxyColors.light.primary} />
-              <Text style={styles.applyButtonText}>Apply</Text>
-            </TouchableOpacity>
+            hasLeftProgram ? (
+              <TouchableOpacity 
+                style={styles.rejoinButton}
+                onPress={rejoinHelperProgram}
+              >
+                <Ionicons name="return-up-back-outline" size={18} color={GalaxyColors.light.success} />
+                <Text style={styles.rejoinButtonText}>Rejoin</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.applyButton}
+                onPress={() => router.push('/helpdesk-apply')}
+              >
+                <Ionicons name="briefcase-outline" size={18} color={GalaxyColors.light.primary} />
+                <Text style={styles.applyButtonText}>Apply</Text>
+              </TouchableOpacity>
+            )
           ) : (
             <View style={{ flexDirection: 'row' }}>
               <TouchableOpacity 
@@ -376,23 +452,58 @@ export default function HelpdeskScreen() {
                 style={[styles.updateButton, { marginLeft: 8 }]}
                 onPress={async () => {
                   try {
+                    console.log('📋 [HELPDESK] Manual refresh button pressed');
                     const uid = auth.currentUser?.uid;
-                    if (!uid) return;
+                    if (!uid) {
+                      console.log('📋 [HELPDESK] No authenticated user');
+                      return;
+                    }
                     
+                    console.log('📋 [HELPDESK] Manual refresh - checking UID:', uid);
                     const helperDoc = await getDoc(doc(db, "helpdeskHelpers", uid));
+                    console.log('📋 [HELPDESK] Manual refresh - helper doc exists:', helperDoc.exists());
+                    
                     if (helperDoc.exists()) {
                       const helperData = helperDoc.data();
+                      console.log('📋 [HELPDESK] Manual refresh - helper data:', helperData);
+                      
                       // Check if helper has left the program
                       if (helperData.left) {
+                        console.log('📋 [HELPDESK] Manual refresh - helper has left, offering rejoin option');
+                        setHasLeftProgram(true);
                         setIsApprovedHelper(false);
+                        
+                        // Ask if user wants to rejoin as helper
+                        Alert.alert(
+                          'Rejoin Helper Program',
+                          'You previously left the helper program. Would you like to rejoin as a helper?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { 
+                              text: 'Rejoin', 
+                              onPress: rejoinHelperProgram
+                            }
+                          ]
+                        );
                       } else {
+                        console.log('📋 [HELPDESK] Manual refresh - helper is active');
                         setIsApprovedHelper(true);
+                        setHasLeftProgram(false);
                       }
                     } else {
+                      console.log('📋 [HELPDESK] Manual refresh - no helper document');
+                      
+                      // Check applicant status
+                      const applicantDoc = await getDoc(doc(db, "helpdeskApplicants", uid));
+                      if (applicantDoc.exists()) {
+                        const applicantData = applicantDoc.data();
+                        console.log('📋 [HELPDESK] Manual refresh - applicant status:', applicantData.status);
+                      }
+                      
                       setIsApprovedHelper(false);
                     }
                   } catch (error) {
-                    console.error("Error checking helper status:", error);
+                    console.error("📋 [HELPDESK] Error in manual refresh:", error);
                   }
                 }}
               >
@@ -561,7 +672,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: GalaxyColors.light.text,
-    flex: 1,
+  },
+  debugText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: GalaxyColors.light.textSecondary,
+    marginTop: 2,
   },
   applyButton: {
     flexDirection: "row",
@@ -577,6 +693,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: GalaxyColors.light.primary,
+    marginLeft: 4,
+  },
+  rejoinButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: GalaxyColors.light.backgroundSecondary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GalaxyColors.light.success,
+  },
+  rejoinButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: GalaxyColors.light.success,
     marginLeft: 4,
   },
   updateButton: {

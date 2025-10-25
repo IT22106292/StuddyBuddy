@@ -25,7 +25,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { GalaxyAnimation } from "../components/GalaxyAnimation";
+import { GalaxyColors } from "../constants/GalaxyColors";
 import { auth, db } from "../firebase/firebaseConfig";
+import { smartNavigateBack } from "../utils/navigation";
 
 export default function GlobalChatScreen() {
   const router = useRouter();
@@ -426,13 +429,16 @@ export default function GlobalChatScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+    <View style={styles.container}>
+      <GalaxyAnimation style={styles.galaxyBackground} />
+      
+      <SafeAreaView style={styles.safeArea}>
+        {/* Header */}
+        <View style={styles.header}>
         {selectionMode ? (
           <>
             <TouchableOpacity onPress={cancelSelection}>
-              <Ionicons name="close" size={24} color="#fff" />
+              <Ionicons name="close" size={24} color={GalaxyColors.light.icon} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{selectedMessages.size} selected</Text>
             <View style={styles.headerActions}>
@@ -482,13 +488,13 @@ export default function GlobalChatScreen() {
           <>
             <TouchableOpacity 
               style={styles.backButton} 
-              onPress={() => router.back()}
+              onPress={() => smartNavigateBack(router, '/global-chat')}
             >
-              <Ionicons name="arrow-back" size={24} color="#fff" />
+              <Ionicons name="arrow-back" size={24} color={GalaxyColors.light.icon} />
             </TouchableOpacity>
             <View style={styles.headerContent}>
-              <Text style={styles.headerTitle}>Global Chat</Text>
-              <Text style={styles.headerSubtitle}>Chat with all users and tutors</Text>
+              <Text style={styles.headerTitle}>🌐 Global Chat</Text>
+              <Text style={styles.headerSubtitle}>Connect with everyone in the community</Text>
             </View>
             <TouchableOpacity
               onPress={() => setSelectionMode(true)}
@@ -537,127 +543,173 @@ export default function GlobalChatScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: GalaxyColors.light.background,
+  },
+  galaxyBackground: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    zIndex: 1,
+  },
+  safeArea: {
+    flex: 1,
+    zIndex: 2,
   },
   header: {
-    backgroundColor: "#007AFF",
-    padding: 16,
+    backgroundColor: GalaxyColors.light.surface + 'CC',
+    padding: 20,
     flexDirection: "row",
     alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: GalaxyColors.light.border,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    backdropFilter: 'blur(10px)',
   },
   backButton: {
     marginRight: 16,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: GalaxyColors.light.backgroundSecondary,
   },
   headerContent: {
     flex: 1,
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 4,
+    fontSize: 22,
+    fontWeight: "800",
+    color: GalaxyColors.light.text,
+    marginBottom: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: "#e0e0e0",
+    color: GalaxyColors.light.textSecondary,
+    fontWeight: '500',
   },
   messagesList: {
-    padding: 16,
+    padding: 20,
     paddingBottom: 8,
   },
   messageContainer: {
-    maxWidth: "80%",
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 16,
+    maxWidth: "85%",
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+    backdropFilter: 'blur(10px)',
   },
   myMessage: {
     alignSelf: "flex-end",
-    backgroundColor: "#007AFF",
+    backgroundColor: GalaxyColors.light.primary,
   },
   myMessageText: {
     color: "#fff",
+    fontSize: 16,
+    lineHeight: 22,
   },
   otherMessage: {
     alignSelf: "flex-start",
-    backgroundColor: "#fff",
+    backgroundColor: GalaxyColors.light.card,
+    borderWidth: 1,
+    borderColor: GalaxyColors.light.cardBorder,
   },
   messageHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   userName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
+    fontSize: 15,
+    fontWeight: "700",
+    color: GalaxyColors.light.text,
   },
   userType: {
-    fontSize: 12,
-    color: "#666",
-    backgroundColor: "#f0f0f0",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    fontSize: 11,
+    color: GalaxyColors.light.textSecondary,
+    backgroundColor: GalaxyColors.light.backgroundSecondary,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    fontWeight: '600',
   },
   myMessageUserType: {
     color: "#fff",
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
   },
   messageText: {
     fontSize: 16,
-    color: "#333",
-    lineHeight: 20,
+    color: GalaxyColors.light.text,
+    lineHeight: 22,
   },
   timestamp: {
     fontSize: 11,
-    color: "#999",
-    marginTop: 6,
+    color: GalaxyColors.light.textTertiary,
+    marginTop: 8,
     alignSelf: "flex-end",
+    fontWeight: '500',
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    padding: 16,
-    backgroundColor: "#fff",
+    padding: 20,
+    backgroundColor: GalaxyColors.light.surface + 'CC',
     borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
+    borderTopColor: GalaxyColors.light.border,
+    backdropFilter: 'blur(10px)',
   },
   textInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    maxHeight: 100,
+    borderWidth: 2,
+    borderColor: GalaxyColors.light.inputBorder,
+    backgroundColor: GalaxyColors.light.input,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    maxHeight: 120,
     fontSize: 16,
+    color: GalaxyColors.light.text,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   sendButton: {
-    backgroundColor: "#007AFF",
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    backgroundColor: GalaxyColors.light.primary,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sendButtonDisabled: {
-    backgroundColor: "#ccc",
+    backgroundColor: GalaxyColors.light.buttonDisabled,
   },
   messageContainer2: { 
     flexDirection: "row", 

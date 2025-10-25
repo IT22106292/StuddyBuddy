@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
     Alert,
     SafeAreaView,
@@ -21,6 +21,17 @@ export default function AskQuestionScreen() {
   const [isUrgent, setIsUrgent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const auth = getAuth();
+
+  // Clear form when screen comes into focus (ensures clean form each time)
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('Ask question screen focused - clearing form');
+      setQuestion('');
+      setCategory('general');
+      setIsUrgent(false);
+      setSubmitting(false);
+    }, [])
+  );
 
   const categories = [
     { value: 'general', label: 'General', icon: 'help-circle-outline' },
@@ -67,6 +78,11 @@ export default function AskQuestionScreen() {
       console.log('Submitting question data:', questionData);
       const docRef = await addDoc(collection(db, 'userQuestions'), questionData);
       console.log('Question submitted with ID:', docRef.id);
+
+      // Clear form fields after successful submission
+      setQuestion('');
+      setCategory('general');
+      setIsUrgent(false);
 
       Alert.alert(
         'Question Submitted!', 
