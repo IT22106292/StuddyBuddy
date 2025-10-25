@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "234882778415",
+    "project_id": "rnsb-3261a",
+    "storage_bucket": "rnsb-3261a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:234882778415:android:370e7943bb17147cfbcdda",
+        "android_client_info": {
+          "package_name": "com.studybuddy.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "234882778415-435cmvbqsea5e64cejjegm8nkjs26vd6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCnyehFTc8QL5G2cjDm5ysGpObjM2UMUZY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "234882778415-435cmvbqsea5e64cejjegm8nkjs26vd6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

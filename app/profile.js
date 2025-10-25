@@ -1,11 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from "expo-router";
 import { sendPasswordResetEmail, signOut } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -15,8 +18,9 @@ import {
   View,
 } from "react-native";
 import * as Progress from 'react-native-progress';
-import { auth, db } from "../firebase/firebaseConfig";
-import { smartNavigateBack } from "../utils/navigation";
+
+import { auth, db, storage } from "../firebase/firebaseConfig";
+
 
 const { width } = Dimensions.get('window');
 
@@ -36,6 +40,7 @@ export default function ProfileScreen() {
   const [resetEmailError, setResetEmailError] = useState("");
 
   useEffect(() => {
+    console.log("ProfileScreen component mounted, fetching user profile");
     fetchUserProfile();
     fetchLikedItems();
     fetchCommentedItems();
@@ -45,6 +50,7 @@ export default function ProfileScreen() {
   // Refresh escape room progress when screen is focused
   useFocusEffect(
     useCallback(() => {
+      console.log("ProfileScreen focused, refreshing escape room progress");
       fetchEscapeRoomProgress();
     }, [])
   );
@@ -85,6 +91,8 @@ export default function ProfileScreen() {
       
       if (userDoc.exists()) {
         profile = userDoc.data();
+        console.log("User profile data fetched:", profile);
+        console.log("Profile image in fetched data:", profile.profileImage);
       } else {
         // Create initial profile for Google sign-in users
         const initialProfile = {
@@ -101,10 +109,12 @@ export default function ProfileScreen() {
         
         await setDoc(doc(db, "users", user.uid), initialProfile);
         profile = initialProfile;
+        console.log("Initial profile created:", profile);
       }
       
       setUserProfile(profile);
       setEditedProfile(profile);
+      console.log("Profile state updated");
     } catch (error) {
       console.error("Error fetching profile:", error);
       Alert.alert("Error", "Failed to load profile. Please try again.");
@@ -115,14 +125,68 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     try {
-      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      console.log("Saving profile, editedProfile:", editedProfile);
+      // Prepare the data to be saved
+      const profileData = {
         ...editedProfile,
         profileComplete: true
-      });
-      setUserProfile({...editedProfile, profileComplete: true});
+      };
+      
+      console.log("Profile data to save:", profileData);
+      
+      // Handle profile image upload if it's a local URI (file://, blob:, data:, or relative paths)
+      if (profileData.profileImage && (profileData.profileImage.startsWith('file://') || 
+          profileData.profileImage.startsWith('blob:') || 
+          profileData.profileImage.startsWith('data:') ||
+          profileData.profileImage.startsWith('/'))) {
+        try {
+          console.log("Attempting to upload profile image:", profileData.profileImage);
+          // Upload image to Firebase Storage
+          let blob;
+          if (profileData.profileImage.startsWith('data:')) {
+            // Convert base64 data URL to blob
+            console.log("Converting base64 data URL to blob");
+            const base64Response = await fetch(profileData.profileImage);
+            blob = await base64Response.blob();
+          } else {
+            // For file:// and blob: URIs, use fetch directly
+            const response = await fetch(profileData.profileImage);
+            blob = await response.blob();
+          }
+          
+          // Create a reference to the file in Firebase Storage
+          // Updated to match Firebase Storage rules: /profile-images/{userId}
+          const fileRef = ref(storage, `profile-images/${auth.currentUser.uid}`);
+          console.log("Firebase Storage reference created:", `profile-images/${auth.currentUser.uid}`);
+          
+          // Upload the file
+          await uploadBytes(fileRef, blob);
+          console.log("Image uploaded successfully");
+          
+          // Get the download URL
+          const downloadURL = await getDownloadURL(fileRef);
+          console.log("Download URL obtained:", downloadURL);
+          
+          // Update profileData with the download URL
+          profileData.profileImage = downloadURL;
+          console.log("Profile image URL updated in profileData");
+        } catch (uploadError) {
+          console.error("Error uploading profile image:", uploadError);
+          Alert.alert("Upload Error", "Failed to upload profile image. Please try again.");
+          // Don't update the profile if the upload failed
+          delete profileData.profileImage;
+          return;
+        }
+      }
+      
+      console.log("Updating user document with profile data:", profileData);
+      await updateDoc(doc(db, "users", auth.currentUser.uid), profileData);
+      setUserProfile({...profileData, profileComplete: true});
+      setEditedProfile({...profileData, profileComplete: true});
       setIsEditing(false);
       Alert.alert("Success", "Profile updated successfully!");
     } catch (error) {
+      console.error("Error saving profile:", error);
       Alert.alert("Error", "Failed to update profile");
     }
   };
@@ -314,6 +378,88 @@ export default function ProfileScreen() {
     }
   };
 
+  // Function to pick an image from the device
+  const pickImage = async () => {
+    // Request permission to access media library
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Sorry, we need camera roll permissions to make this work!');
+      return;
+    }
+
+    // Launch image picker
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: false,
+    });
+
+    console.log("Image picker result:", result);
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      console.log("Selected image URI:", result.assets[0].uri);
+      // Store the local URI temporarily for preview, but don't save it to the database
+      setEditedProfile({...editedProfile, profileImage: result.assets[0].uri});
+    }
+  };
+
+  // Function to remove the selected image
+  const removeImage = () => {
+    console.log("Removing profile image");
+    setEditedProfile({...editedProfile, profileImage: null});
+  };
+
+  const handleInvalidImage = async () => {
+    try {
+      console.log("Removing invalid profile image URL");
+      // Remove the invalid profile image URL from the database
+      await updateDoc(doc(db, "users", auth.currentUser.uid), { profileImage: null });
+      // Update the local state
+      setUserProfile(prev => ({ ...prev, profileImage: null }));
+      setEditedProfile(prev => ({ ...prev, profileImage: null }));
+      console.log("Invalid profile image URL removed");
+    } catch (error) {
+      console.error("Error removing invalid profile image URL:", error);
+    }
+  };
+
+  // Check for and clean up invalid profile image URLs when component mounts
+  useEffect(() => {
+    const checkAndCleanInvalidUrls = async () => {
+      console.log("Profile data:", userProfile);
+      if (userProfile && userProfile.profileImage) {
+        console.log("Profile image URL found:", userProfile.profileImage);
+        console.log("Profile image URL type:", typeof userProfile.profileImage);
+        console.log("Starts with http:", userProfile.profileImage.startsWith('http'));
+        console.log("Starts with https:", userProfile.profileImage.startsWith('https'));
+        
+        // Check if profileImage is an invalid URL
+        if (userProfile.profileImage.startsWith('blob:') || 
+            userProfile.profileImage.startsWith('file://') ||
+            userProfile.profileImage.startsWith('data:') ||
+            userProfile.profileImage.startsWith('/')) {
+          console.log("Found invalid profile image URL, cleaning up:", userProfile.profileImage);
+          try {
+            await updateDoc(doc(db, "users", auth.currentUser.uid), { profileImage: null });
+            setUserProfile(prev => ({ ...prev, profileImage: null }));
+            setEditedProfile(prev => ({ ...prev, profileImage: null }));
+            console.log("Invalid profile image URL removed");
+          } catch (error) {
+            console.error("Error removing invalid profile image URL:", error);
+          }
+        } else {
+          console.log("Profile image URL appears valid:", userProfile.profileImage);
+        }
+      } else {
+        console.log("No profile image found");
+      }
+    };
+    
+    checkAndCleanInvalidUrls();
+  }, [userProfile]);
+
   if (profileLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -357,17 +503,104 @@ export default function ProfileScreen() {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {userProfile.fullName?.charAt(0) || "U"}
-            </Text>
+            {isEditing ? (
+              // Editing mode - show image with change/remove options
+              <>
+                {(() => {
+                  console.log("Rendering edit mode avatar");
+                  console.log("editedProfile.profileImage:", editedProfile.profileImage);
+                  
+                  if (editedProfile.profileImage) {
+                    console.log("Rendering edited profile image");
+                    return (
+                      <Image 
+                        source={{ uri: editedProfile.profileImage }} 
+                        style={styles.profileImage}
+                      />
+                    );
+                  } else {
+                    console.log("Rendering initials in edit mode");
+                    return (
+                      <Text style={styles.avatarText}>
+                        {editedProfile.fullName?.charAt(0) || "U"}
+                      </Text>
+                    );
+                  }
+                })()}
+                <TouchableOpacity 
+                  style={styles.changeImageButton}
+                  onPress={pickImage}
+                >
+                  <Ionicons name="camera" size={20} color="white" />
+                </TouchableOpacity>
+              </>
+            ) : (
+              // View mode - show image or initials
+              <>
+                {(() => {
+                  console.log("Rendering view mode avatar");
+                  console.log("userProfile.profileImage:", userProfile.profileImage);
+                  console.log("Valid URL:", userProfile.profileImage && (userProfile.profileImage.startsWith('http') || userProfile.profileImage.startsWith('https') || userProfile.profileImage.startsWith('data:')));
+                  
+                  if (userProfile.profileImage && (userProfile.profileImage.startsWith('http') || userProfile.profileImage.startsWith('https') || userProfile.profileImage.startsWith('data:'))) {
+                    console.log("Rendering profile image");
+                    return (
+                      <Image 
+                        source={{ uri: userProfile.profileImage }} 
+                        style={styles.profileImage}
+                        onError={(error) => {
+                          console.log("Profile image load error:", error);
+                          console.log("Failed URL:", userProfile.profileImage);
+                          // If image fails to load, remove it from the profile
+                          handleInvalidImage();
+                        }}
+                        onLoad={() => {
+                          console.log("Profile image loaded successfully:", userProfile.profileImage);
+                        }}
+                      />
+                    );
+                  } else {
+                    console.log("Rendering initials");
+                    return (
+                      <Text style={styles.avatarText}>
+                        {userProfile.fullName?.charAt(0) || "U"}
+                      </Text>
+                    );
+                  }
+                })()}
+              </>
+            )}
           </View>
-          <Text style={styles.name}>{userProfile.fullName}</Text>
-          <Text style={styles.email}>{userProfile.email}</Text>
-          {userProfile.isTutor && (
-            <View style={styles.tutorBadge}>
-              <Ionicons name="school" size={16} color="#4CAF50" />
-              <Text style={styles.tutorText}>Tutor</Text>
-            </View>
+          
+          {isEditing ? (
+            <>
+              <Text style={styles.name}>{editedProfile.fullName}</Text>
+              <TouchableOpacity 
+                style={styles.changePhotoButton}
+                onPress={pickImage}
+              >
+                <Text style={styles.changePhotoText}>Change Photo</Text>
+              </TouchableOpacity>
+              {editedProfile.profileImage && (
+                <TouchableOpacity 
+                  style={styles.removePhotoButton}
+                  onPress={removeImage}
+                >
+                  <Text style={styles.removePhotoText}>Remove Photo</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={styles.name}>{userProfile.fullName}</Text>
+              <Text style={styles.email}>{userProfile.email}</Text>
+              {userProfile.isTutor && (
+                <View style={styles.tutorBadge}>
+                  <Ionicons name="school" size={16} color="#4CAF50" />
+                  <Text style={styles.tutorText}>Tutor</Text>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -689,12 +922,59 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
+    overflow: "hidden", // Ensure the image stays within the circle
   },
+  
+  profileImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 40, // Make the image circular
+  },
+  
   avatarText: {
     color: "white",
     fontSize: 32,
     fontWeight: "bold",
   },
+  
+  changeImageButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 122, 255, 0.8)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  
+  changePhotoButton: {
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 8,
+  },
+  
+  changePhotoText: {
+    color: "#007AFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  
+  removePhotoButton: {
+    marginTop: 6,
+  },
+  
+  removePhotoText: {
+    color: "#ff3b30",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
   name: {
     fontSize: 24,
     fontWeight: "bold",
