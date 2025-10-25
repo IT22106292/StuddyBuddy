@@ -1,15 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Google from "expo-auth-session/providers/google";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, signInWithPopup, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase/firebaseConfig";
 import { useEffect, useState } from "react";
 import {
+  Alert,
   Dimensions,
   Image,
+  Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -24,7 +24,10 @@ import { GalaxyAnimation } from "../components/GalaxyAnimation";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { GalaxyColors } from "../constants/GalaxyColors";
 import { GlobalStyles } from "../constants/GlobalStyles";
-import { auth } from "../firebase/firebaseConfig";
+import { auth, db } from "../firebase/firebaseConfig";
+
+// Import Google Auth module - we'll handle errors during initialization
+import * as Google from "expo-auth-session/providers/google";
 
 const { width, height } = Dimensions.get('window');
 
@@ -38,91 +41,134 @@ export default function SignInScreen() {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
+  
+  // Google Auth state - always initialize but handle platform differences
+  const [googleAuthState, setGoogleAuthState] = useState({
+    request: null,
+    response: null,
+    promptAsync: null,
+    initialized: false,
+    error: null
+  });
 
   // Initialize WebBrowser for Google Auth
   useEffect(() => {
-    WebBrowser.maybeCompleteAuthSession();
-  }, []);
-
-  // Log when component mounts
-  useEffect(() => {
-    console.log('SignInScreen mounted');
-  }, []);
-
-  // Log environment variables for debugging
-  useEffect(() => {
-    console.log('Google OAuth Environment Variables:');
-    console.log('Web Client ID:', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'Using default client ID');
-    console.log('iOS Client ID:', process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || 'Not set');
-    console.log('Android Client ID:', process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || 'Not set');
-  }, []);
-
-  // Google Auth setup
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: '234882778415-qo2oe5ehans3gpajht9dl4mljqodjq1r.apps.googleusercontent.com',
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    redirectUri: process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI || 'http://localhost:8081/signin', // Use your actual redirect URI
-    useProxy: true, // Use Expo's auth proxy for better compatibility
-    scopes: ['openid', 'profile', 'email'], // Explicitly request scopes
-  });
-
-  useEffect(() => {
-    console.log('Google Auth response:', response);
-    
-    if (!response) {
-      return;
+    if (Platform.OS !== 'web') {
+      WebBrowser.maybeCompleteAuthSession();
     }
+  }, []);
+
+  // Initialize Google Auth
+  useEffect(() => {
+    const initializeGoogleAuth = async () => {
+      if (Platform.OS !== 'web') {
+        try {
+          console.log('Initializing Google Auth for mobile platform');
+          
+          // Log environment variables for debugging
+          console.log('Google OAuth Environment Variables:');
+          console.log('Web Client ID:', process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'Using default client ID');
+          console.log('iOS Client ID:', process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || 'Not set');
+          console.log('Android Client ID:', process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || 'Not set');
+          
+          // Create the auth request
+          const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+            clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '234882778415-qo2oe5ehans3gpajht9dl4mljqodjq1r.apps.googleusercontent.com',
+            iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '234882778415-435cmvbqsea5e64cejjegm8nkjs26vd6.apps.googleusercontent.com',
+            androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '234882778415-435cmvbqsea5e64cejjegm8nkjs26vd6.apps.googleusercontent.com',
+            redirectUri: process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI || 'http://localhost:8081/signin',
+            useProxy: true,
+            scopes: ['openid', 'profile', 'email'],
+          });
+          
+          setGoogleAuthState({
+            request,
+            response,
+            promptAsync,
+            initialized: true,
+            error: null
+          });
+          
+          console.log('Google Auth initialized successfully');
+        } catch (error) {
+          console.log('Google Auth initialization error:', error);
+          setGoogleAuthState({
+            request: null,
+            response: null,
+            promptAsync: null,
+            initialized: false,
+            error: error.message || 'Failed to initialize Google Auth'
+          });
+        }
+      }
+    };
     
-    if (response?.type === 'success') {
-      const { id_token } = response.params;
-      const credential = GoogleAuthProvider.credential(id_token);
-      
-      signInWithCredential(auth, credential)
-        .then(async (userCredential) => {
-          // Successfully signed in
-          console.log('Google Sign-In successful');
+    initializeGoogleAuth();
+  }, []);
+
+  // Handle Google Auth response
+  useEffect(() => {
+    const handleGoogleResponse = async () => {
+      if (Platform.OS !== 'web' && googleAuthState.response) {
+        console.log('Google Auth response:', googleAuthState.response);
+        
+        if (googleAuthState.response?.type === 'success') {
+          const { id_token } = googleAuthState.response.params;
+          const credential = GoogleAuthProvider.credential(id_token);
           
-          // Check if user is admin
-          const user = userCredential.user;
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          const userData = userDoc.data();
+          signInWithCredential(auth, credential)
+            .then(async (userCredential) => {
+              // Successfully signed in
+              console.log('Google Sign-In successful');
+              
+              // Check if user is admin
+              const user = userCredential.user;
+              const userDoc = await getDoc(doc(db, "users", user.uid));
+              const userData = userDoc.data();
+              
+              setTimeout(() => {
+                setGoogleAuthState(prev => ({...prev, response: null}));
+                setShowLoadingScreen(false);
+                setIsLoading(false);
+                if (userData && userData.isAdmin) {
+                  router.replace("/admin");
+                } else {
+                  router.replace("/home");
+                }
+              }, 1000);
+            })
+            .catch(error => {
+              console.error('Google sign-in error:', error);
+              setError(`Failed to sign in with Google: ${error.message || 'Unknown error'}`);
+              setGoogleAuthState(prev => ({...prev, response: null}));
+              setShowLoadingScreen(false);
+              setIsLoading(false);
+            });
+        } else if (googleAuthState.response?.type === 'error') {
+          // Handle error
+          console.error('Google Sign-In error:', googleAuthState.response.params);
           
-          setTimeout(() => {
-            setShowLoadingScreen(false);
-            setIsLoading(false);
-            if (userData && userData.isAdmin) {
-              router.replace("/admin");
-            } else {
-              router.replace("/home");
-            }
-          }, 1000);
-        })
-        .catch(error => {
-          console.error('Google sign-in error:', error);
-          setError(`Failed to sign in with Google: ${error.message || 'Unknown error'}`);
+          if (googleAuthState.response.params?.error === 'redirect_uri_mismatch') {
+            setError("Google Sign-In failed: Redirect URI mismatch. Please add http://localhost:8081/signin to your Google Cloud Console authorized redirect URIs.");
+          } else {
+            setError(`Google Sign-In failed: ${googleAuthState.response.params?.error_description || 'Unknown error'}`);
+          }
+          
+          setGoogleAuthState(prev => ({...prev, response: null}));
           setShowLoadingScreen(false);
           setIsLoading(false);
-        });
-    } else if (response?.type === 'error') {
-      // Handle error
-      console.error('Google Sign-In error:', response.params);
-      
-      if (response.params?.error === 'redirect_uri_mismatch') {
-        setError("Google Sign-In failed: Redirect URI mismatch. Please add http://localhost:8081/signin to your Google Cloud Console authorized redirect URIs. See FIX_REDIRECT_URI_MISMATCH.md for detailed instructions.");
-      } else {
-        setError(`Google Sign-In failed: ${response.params?.error_description || 'Unknown error'}`);
+        } else if (googleAuthState.response?.type === 'dismiss') {
+          // Handle dismissal
+          setError("Google Sign-In was cancelled or dismissed.");
+          setGoogleAuthState(prev => ({...prev, response: null}));
+          setShowLoadingScreen(false);
+          setIsLoading(false);
+        }
       }
-      
-      setShowLoadingScreen(false);
-      setIsLoading(false);
-    } else if (response?.type === 'dismiss') {
-      // Handle dismissal
-      setError("Google Sign-In was cancelled or dismissed. This often happens when running on web. Try using a device or simulator instead. If you see a redirect_uri_mismatch error, make sure http://localhost:8081/signin is added to your Google Cloud Console authorized redirect URIs.");
-      setShowLoadingScreen(false);
-      setIsLoading(false);
-    }
-  }, [response]);
+    };
+    
+    handleGoogleResponse();
+  }, [googleAuthState.response]);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -171,47 +217,92 @@ export default function SignInScreen() {
   };
 
   const handleGoogleSignIn = async () => {
-    if (!request) {
-      setError("Google Sign-In is not available right now. This typically happens when running on web or if the OAuth configuration is incorrect. Please try again using a device or simulator. See google-signin-dismiss-issue.md for detailed troubleshooting.");
-      return;
-    }
-    
-    // Clear any previous errors
-    setError("");
-    
-    // Show loading state
-    setIsLoading(true);
-    setShowLoadingScreen(true);
-    
-    try {
-      console.log('Initiating Google Sign-In with request:', request);
-      const result = await promptAsync();
-      console.log('Google Sign-In result:', result);
-      
-      if (result?.type === 'dismiss') {
-        setError("Google Sign-In was cancelled or dismissed. This often happens when running on web. Try using a device or simulator instead. If you see a redirect_uri_mismatch error, make sure http://localhost:8081/signin is added to your Google Cloud Console authorized redirect URIs.");
-        setIsLoading(false);
+    // Different implementation for web and mobile
+    if (Platform.OS === 'web') {
+      // Web implementation using Firebase
+      try {
+        setIsLoading(true);
+        setError("");
+        setShowLoadingScreen(true);
+        
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
+        
+        // Check if user is admin
+        const user = result.user;
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        const userData = userDoc.data();
+        
+        setTimeout(() => {
+          setShowLoadingScreen(false);
+          setIsLoading(false);
+          if (userData && userData.isAdmin) {
+            router.replace("/admin");
+          } else {
+            router.replace("/home");
+          }
+        }, 1000);
+      } catch (error) {
+        console.error('Google Sign-In error:', error);
+        setError(`Failed to sign in with Google: ${error.message || 'Unknown error'}`);
         setShowLoadingScreen(false);
-      } else if (result?.type === 'error') {
-        console.error('Google Sign-In error:', result.params);
+        setIsLoading(false);
+      }
+    } else {
+      // Mobile implementation using expo-auth-session
+      if (!googleAuthState.initialized) {
+        setError("Google Sign-In is not properly configured. Please check that you have added the SHA-1 certificate fingerprint to your Google Cloud Console OAuth 2.0 client configuration.");
+        Alert.alert('Configuration Error', 'Google Sign-In is not properly configured. Please check that you have added the SHA-1 certificate fingerprint to your Google Cloud Console OAuth 2.0 client configuration.');
+        return;
+      }
+      
+      if (!googleAuthState.request || !googleAuthState.promptAsync) {
+        setError("Google Sign-In is not available right now. Please try again.");
+        Alert.alert('Initialization Error', 'Google Sign-In is not available right now. Please try again.');
+        return;
+      }
+      
+      // Clear any previous errors
+      setError("");
+      
+      // Show loading state
+      setIsLoading(true);
+      setShowLoadingScreen(true);
+      
+      try {
+        console.log('Initiating Google Sign-In with request:', googleAuthState.request);
+        const result = await googleAuthState.promptAsync();
+        console.log('Google Sign-In result:', result);
         
-        // Handle specific error codes
-        if (result.params?.error === 'invalid_request') {
-          setError("Google Sign-In failed: Invalid request (400 error). Please check your Google OAuth configuration. See google-signin-troubleshooting.md for detailed troubleshooting steps.");
-        } else if (result.params?.error === 'redirect_uri_mismatch') {
-          setError("Google Sign-In failed: Redirect URI mismatch. Please add http://localhost:8081/signin to your Google Cloud Console authorized redirect URIs. See FIX_REDIRECT_URI_MISMATCH.md for detailed instructions.");
-        } else {
-          setError(`Google Sign-In failed: ${result.params?.error_description || 'Unknown error'}`);
+        // Update the response in state so the useEffect can handle it
+        setGoogleAuthState(prev => ({
+          ...prev,
+          response: result
+        }));
+        
+        if (result?.type === 'dismiss') {
+          setError("Google Sign-In was cancelled or dismissed.");
+          setIsLoading(false);
+          setShowLoadingScreen(false);
+        } else if (result?.type === 'error') {
+          console.error('Google Sign-In error:', result.params);
+          
+          // Handle specific error cases
+          if (result.params?.error === 'idp_claimed') {
+            setError("Google Sign-In failed: Invalid client ID configuration. Please verify your SHA-1 certificate fingerprint in Google Cloud Console.");
+          } else {
+            setError(`Google Sign-In failed: ${result.params?.error_description || 'Unknown error'}`);
+          }
+          
+          setIsLoading(false);
+          setShowLoadingScreen(false);
         }
-        
+      } catch (error) {
+        console.error('Google Sign-In error:', error);
+        setError(`Failed to initiate Google Sign-In: ${error.message || 'Unknown error'}`);
         setIsLoading(false);
         setShowLoadingScreen(false);
       }
-    } catch (error) {
-      console.error('Google Sign-In error:', error);
-      setError(`Failed to initiate Google Sign-In: ${error.message || 'Unknown error'}. This often happens when running on web. Try using a device or simulator instead.`);
-      setIsLoading(false);
-      setShowLoadingScreen(false);
     }
   };
 
@@ -337,11 +428,20 @@ export default function SignInScreen() {
                 <TouchableOpacity
                   style={styles.googleButton}
                   onPress={handleGoogleSignIn}
-                  disabled={!request || isLoading}
+                  disabled={isLoading || (Platform.OS !== 'web' && !googleAuthState.initialized)}
                 >
                   <Ionicons name="logo-google" size={20} color="#DB4437" />
                   <Text style={styles.googleButtonText}>Sign in with Google</Text>
                 </TouchableOpacity>
+                
+                {/* Show Google Auth initialization error */}
+                {Platform.OS !== 'web' && googleAuthState.error && (
+                  <View style={styles.infoContainer}>
+                    <Text style={styles.infoText}>
+                      Google Auth Error: {googleAuthState.error}
+                    </Text>
+                  </View>
+                )}
                 
                 {error && error.includes('400') && (
                   <View style={styles.infoContainer}>

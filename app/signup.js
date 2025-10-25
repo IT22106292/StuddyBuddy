@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useState } from "react";
 import {
+    Alert,
     Dimensions,
     Image,
     SafeAreaView,
@@ -21,7 +24,7 @@ import { GalaxyAnimation } from "../components/GalaxyAnimation";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { GalaxyColors } from "../constants/GalaxyColors";
 import { GlobalStyles } from "../constants/GlobalStyles";
-import { auth, db } from "../firebase/firebaseConfig";
+import { auth, db, storage } from "../firebase/firebaseConfig";
 
 const { width, height } = Dimensions.get('window');
 
@@ -40,6 +43,7 @@ export default function SignUpScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
+  const [profileImage, setProfileImage] = useState(null); // New state for profile image
 
   const handleSignUp = async () => {
     if (!email || !password || !fullName) {
@@ -90,6 +94,60 @@ export default function SignUpScreen() {
         profileComplete: true
       };
 
+      // Add profile image URL if available
+      if (profileImage) {
+        try {
+          console.log("Attempting to upload profile image:", profileImage);
+          // Check if this is already a Firebase Storage URL (starts with http)
+          if (profileImage.startsWith('http')) {
+            // Already a Firebase Storage URL, use it directly
+            userData.profileImage = profileImage;
+            console.log("Profile image is already a Firebase Storage URL");
+          } else if (profileImage.startsWith('file://') || profileImage.startsWith('blob:') || profileImage.startsWith('data:') || profileImage.startsWith('/')) {
+            // This is a local URI, upload it to Firebase Storage
+            // Upload image to Firebase Storage
+            let blob;
+            if (profileImage.startsWith('data:')) {
+              // Convert base64 data URL to blob
+              console.log("Converting base64 data URL to blob");
+              const base64Response = await fetch(profileImage);
+              blob = await base64Response.blob();
+            } else {
+              // For file:// and blob: URIs, use fetch directly
+              const response = await fetch(profileImage);
+              blob = await response.blob();
+            }
+            console.log("Image blob created successfully");
+            
+            // Create a reference to the file in Firebase Storage
+            // Updated to match Firebase Storage rules: /profile-images/{userId}
+            const fileRef = ref(storage, `profile-images/${user.uid}`);
+            console.log("Firebase Storage reference created:", `profile-images/${user.uid}`);
+            
+            // Upload the file
+            await uploadBytes(fileRef, blob);
+            console.log("Image uploaded successfully");
+            
+            // Get the download URL
+            const downloadURL = await getDownloadURL(fileRef);
+            console.log("Download URL obtained:", downloadURL);
+            
+            // Add the download URL to userData
+            userData.profileImage = downloadURL;
+            console.log("Profile image URL added to userData");
+          } else {
+            // Not a valid image URL, remove it
+            console.log("Invalid profile image URL detected, removing it");
+            delete userData.profileImage;
+          }
+        } catch (uploadError) {
+          console.error("Error uploading profile image:", uploadError);
+          // Continue with signup even if image upload fails
+          // But don't store the local URI
+          delete userData.profileImage;
+        }
+      }
+
       // Add isAdmin field if registering as admin
       if (isAdmin) {
         userData.isAdmin = true;
@@ -110,6 +168,36 @@ export default function SignUpScreen() {
       setShowLoadingScreen(false);
       setIsLoading(false);
     }
+  };
+
+  // Function to pick an image from the device
+  const pickImage = async () => {
+    // Request permission to access media library
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Sorry, we need camera roll permissions to make this work!');
+      return;
+    }
+
+    // Launch image picker
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: false,
+    });
+
+    console.log(result);
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setProfileImage(result.assets[0].uri);
+    }
+  };
+
+  // Function to remove the selected image
+  const removeImage = () => {
+    setProfileImage(null);
   };
 
   // For mobile devices, we'll stack the image and form vertically
@@ -154,6 +242,36 @@ export default function SignUpScreen() {
                     <Text style={styles.errorText}>{error}</Text>
                   </View>
                 ) : null}
+
+                {/* Profile Image Section */}
+                <View style={styles.inputContainer}>
+                  <Text style={GlobalStyles.inputLabel}>Profile Photo (Optional)</Text>
+                  <View style={styles.profileImageContainer}>
+                    {profileImage ? (
+                      <>
+                        <Image source={{ uri: profileImage }} style={styles.profileImage} />
+                        <TouchableOpacity 
+                          style={styles.removeImageButton}
+                          onPress={removeImage}
+                        >
+                          <Ionicons name="close-circle" size={24} color={GalaxyColors.light.error} />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <View style={styles.placeholderImageContainer}>
+                        <Ionicons name="person-circle-outline" size={60} color={GalaxyColors.light.icon} />
+                      </View>
+                    )}
+                    <TouchableOpacity 
+                      style={styles.changeImageButton}
+                      onPress={pickImage}
+                    >
+                      <Text style={styles.changeImageText}>
+                        {profileImage ? 'Change Photo' : 'Add Photo'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
                 {/* Full Name Input */}
                 <View style={styles.inputContainer}>
@@ -430,6 +548,36 @@ export default function SignUpScreen() {
                       <Text style={styles.errorText}>{error}</Text>
                     </View>
                   ) : null}
+
+                  {/* Profile Image Section */}
+                  <View style={styles.inputContainer}>
+                    <Text style={GlobalStyles.inputLabel}>Profile Photo (Optional)</Text>
+                    <View style={styles.profileImageContainer}>
+                      {profileImage ? (
+                        <>
+                          <Image source={{ uri: profileImage }} style={styles.profileImage} />
+                          <TouchableOpacity 
+                            style={styles.removeImageButton}
+                            onPress={removeImage}
+                          >
+                            <Ionicons name="close-circle" size={24} color={GalaxyColors.light.error} />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <View style={styles.placeholderImageContainer}>
+                          <Ionicons name="person-circle-outline" size={60} color={GalaxyColors.light.icon} />
+                        </View>
+                      )}
+                      <TouchableOpacity 
+                        style={styles.changeImageButton}
+                        onPress={pickImage}
+                      >
+                        <Text style={styles.changeImageText}>
+                          {profileImage ? 'Change Photo' : 'Add Photo'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
                   {/* Full Name Input */}
                   <View style={styles.inputContainer}>
@@ -998,7 +1146,48 @@ const styles = {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
   
+  // Profile Image Styles
+  profileImageContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 12,
+  },
+  
+  placeholderImageContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 12,
+    backgroundColor: GalaxyColors.light.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  changeImageButton: {
+    backgroundColor: GalaxyColors.light.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  
+  changeImageText: {
+    color: GalaxyColors.light.textInverse,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  
+  removeImageButton: {
+    position: 'absolute',
+    top: -10,
+    right: 30,
+    zIndex: 1,
+  },
 };

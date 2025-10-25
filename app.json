@@ -19,7 +19,7 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.CAMERA"
+        "android.permission.INTERNET"
       ],
       "package": "com.studybuddy.app"
     },
@@ -54,9 +54,13 @@
     "extra": {
       "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyDtbcAlT4Hq0KrvbsLDVc8l5woyXKOn5KA",
       "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "234882778415-qo2oe5ehans3gpajht9dl4mljqodjq1r.apps.googleusercontent.com",
-      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
-      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com",
-      "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "http://localhost:8081/signin"
+      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "234882778415-435cmvbqsea5e64cejjegm8nkjs26vd6.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "234882778415-435cmvbqsea5e64cejjegm8nkjs26vd6.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "http://localhost:8081/signin",
+      "router": {},
+      "eas": {
+        "projectId": "278103aa-e913-4fff-bb5f-f6cd45eb0b5d"
+      }
     }
   }
 }
